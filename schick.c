@@ -2,13 +2,26 @@
 
     Scanner
 
+Error return codes
+
+    0100 buffer overflow
+    0101 invalid character
+    0102 specific token expected
+        0103 identifier expected
+        0104 unknown identifier
+        0105 function redefined
+        0106 type expected
+    0110 `begin` expected
+    0199 expression expected
+
+
 Token
     operations    conditions    other    reserved words predefined identifiers
                   50h 'P' =     28h (    03h procdure   0Ah number
     41h 'A' <<    51h 'Q' <>    29h )    04h begin      0Bh char
-    42h 'B' >>    52h 'R' <     2Ch ,    05h end        0Ch posix
-    43h 'C' -     53h 'S' >=    3Ah :    06h if         0Dh write
-    44h 'D' |     54h 'T' >     3Bh ;    07h else       0Eh getchar
+    42h 'B' >>    52h 'R' <     2Ch ,    05h end
+    43h 'C' -     53h 'S' >=    3Ah :    06h if
+    44h 'D' |     54h 'T' >     3Bh ;    07h else
     45h 'E' ^     55h 'U' <=    5Bh [    08h while
     46h 'F' +                   5Dh ]    09h return     special
     47h 'G' &                                           00h EOF
@@ -164,8 +177,8 @@ static void get_token(void)
         }
 
         /* hexadecimal appended? */
+        (void)next_char();
         while (1) {
-            (void)next_char();
             if (ch_class == '^') { /* '0' ... '9' } */
                 i = ch - 48;
             } else {
@@ -197,7 +210,7 @@ static void get_token(void)
         token_buf[token_int] = 0;
 
         /* search keyword */
-        const char *keywords = "9procedure5begin3end2if4else5while6return6number4char5posix5write7putchar0";
+        const char *keywords = "9procedure5begin3end2if4else5while6return6number4char0";
         i = 0;
         len = 9;
         token = 3;
@@ -267,6 +280,114 @@ static void get_token(void)
 }
 
 
+
+
+
+
+
+
+
+/**********************************************************************
+ * Parser
+ **********************************************************************/
+
+static unsigned int accept(unsigned int ch)
+/* parameter named `ch` to check if name scopes work */
+{
+    if (token == ch) {
+        get_token();
+        return 1;
+    }
+    return 0;
+}
+
+static void expect(unsigned int t)
+{
+    if (accept(t) == 0) {
+        error(102); /* Error: specific token expected */
+    }
+}
+
+
+
+
+
+static void parse_expression(void)
+{
+    write(2, "expression\x0d\x0a", 12);
+    if (token == '^') { /* number */
+        get_token();
+    }
+    else if (token == 1) { /* string */
+        get_token();
+    }
+    else if (token == 12) { /* identifier */
+        get_token();
+    }
+    else error(199); /* expression expected */
+}
+
+
+
+static void parse_statement(void)
+{
+    write(2, "statement\x0d\x0a", 11);
+    get_token();        /* ignore identifier */
+    if (accept('.')) {
+        get_token();    /* ignore identifier */
+    }
+
+    if (accept('(')) {
+        if (accept(')') == 0) {
+            parse_expression();
+            while (accept(',') != 0) {
+                parse_expression();
+            }
+            expect(')');
+        }
+    }
+}
+
+
+
+static void parse_procedure(void)
+{
+}
+
+
+static void parse_module(void)
+{
+    get_token();        /* ignore keyword `module` */
+    get_token();        /* ignore name of module */
+    expect(';');
+
+    get_token();        /* ignore keyword `import` */
+    get_token();        /* ignore keyword `posix` 
+                           (must be the 1st import in Bootstrap Schick */
+    while (accept(',')) {
+        get_token();    /* ignore imported module names for now */
+    }
+    expect(';');
+
+    while (accept(4/*begin*/) == 0) { /* while NOT begin */
+        if (accept(3/*procedure*/)) {
+            parse_procedure();
+        }
+        else error(110);
+    }
+
+    parse_statement();
+    while (accept(';')) {
+        if (token != 5/*end*/) {
+            parse_statement();
+        }
+    }
+
+    expect(5/*end*/);
+    expect('.');
+}
+
+
 int main(void)
 {
     buf_size  = 65536;
@@ -276,6 +397,10 @@ int main(void)
     code_pos  = 0;
     (void)next_char();
 
+    get_token();
+    parse_module();
+
+/*
     token = 1;
     while (token != 0) {
         get_token();
@@ -289,8 +414,8 @@ int main(void)
             buf[1] = token;
             write(2, buf, 2);
         }
-        else if (token == 3) {
-            write(2, " STR", 4);
+        else if (token == 1) {
+            write(2, " STR ", 5);
             write(2, token_buf, token_int);
 
         }
@@ -303,15 +428,14 @@ int main(void)
         else if (token == 9) { write(2, " return", 7); }
         else if (token == 10) { write(2, " number", 7); }
         else if (token == 11) { write(2, " char", 5); }
-        else if (token == 12) { write(2, " posix", 6); }
-        else if (token == 13) { write(2, " write", 6); }
-        else if (token == 14) { write(2, " getchar", 8); }
-        else if (token == 15) {
+        else if (token == 12) {
             write(2, " ID ", 4);
             write(2, token_buf, token_int);
         }
 
         write(2, "\x0d\x0a", 2);
     }
+*/
+
     return 0;
 }
