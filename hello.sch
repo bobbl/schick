@@ -1,16 +1,23 @@
 module Hello;
 
-import posix;
+procedure PosixWrite(FileDesc: number, Buf: string, Len: number)
+begin
+  #asm
+    .string ''93080004  /* li a7, 64 # sys_write        */
+    .string ''73000000  /* ecall                        */
+    .string ''67800000  /* ret                          */
+  end;
+end;
 
 begin
-  posix.write(1, 'Hello world'0D0A, ((10 + 3) * 2) >> 1);
+  PosixWrite(1, 'Hello world'0D0A, ((10 + 3) * 2) >> 1);
   i : number;
   i := 0;
   while i < 5 begin
     if (i & 1) = 0 begin
-      posix.write(1, 'even'0D0A, 6);
+      PosixWrite(1, 'even'0D0A, 6);
     else
-      posix.write(1, 'odd'0D0A, 5);
+      PosixWrite(1, 'odd'0D0A, 5);
     end;
     i := i + 1;
   end;

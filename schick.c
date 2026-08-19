@@ -17,14 +17,14 @@ Error return codes
 
 Token
     operations    conditions    other    reserved words predefined identifiers
-                  50h 'P' =     28h (    03h procedure  0Ah number
-    41h 'A' <<    51h 'Q' <>    29h )    04h begin      0Bh char
-    42h 'B' >>    52h 'R' <     2Ch ,    05h end
+                  50h 'P' =     28h (    03h procedure  0Bh number
+    41h 'A' <<    51h 'Q' <>    29h )    04h begin      0Ch char
+    42h 'B' >>    52h 'R' <     2Ch ,    05h end        0Dh string
     43h 'C' -     53h 'S' >=    3Ah :    06h if
     44h 'D' |     54h 'T' >     3Bh ;    07h else
     45h 'E' ^     55h 'U' <=             08h while
     46h 'F' +                   5Bh [    09h return     special
-    47h 'G' &                   5Dh ]                   00h EOF
+    47h 'G' &                   5Dh ]    0Ah #asm       00h EOF
     48h 'H' *     61h 'a' :=                            01h string
     49h 'I' /     62h 'b' ->                            0Fh identifier
     4Ah 'J' %                                           5Eh '^' number
@@ -165,7 +165,7 @@ void emit_fix_call(unsigned int from, unsigned int to)
 
 unsigned int emit_func_begin(unsigned int n)
 {
-    write(2, "BEGIN (FUNC)\x0d\x0a", 14);
+    write(2, "BEGIN (PROCEDURE)\x0d\x0a", 19);
 }
 
 void emit_return()
@@ -231,7 +231,7 @@ static unsigned int token_cmp(const char *s, unsigned int n)
 
 static unsigned int next_char(void)
 {
-    const char  *classify  = "         ##  #                  #    JG!()HF,C.#^^^^^^^^^^:;RPT  __________________________[ ]E_ __________________________ D   ";
+    const char  *classify  = "         ##  #                  #  _ JG!()HF,C.#^^^^^^^^^^:;RPT  __________________________[ ]E_ __________________________ D   ";
         /*                    012345678901234567890123456789012345678901234567890123456789
                                         1         2         3         4         5
          ! = look at character for further processing
@@ -337,7 +337,7 @@ static void get_token(void)
         token_buf[token_int] = 0;
 
         /* search keyword */
-        const char *keywords = "9procedure5begin3end2if4else5while6return6number4char0";
+        const char *keywords = "9procedure5begin3end2if4else5while6return4#asm6number4char6string0";
         i = 0;
         len = 9;
         token = 3;
@@ -351,7 +351,7 @@ static void get_token(void)
             i = i + len + 1;
             len = keywords[i] - '0';
         }
-        /* token = 15 0x0F identifier */
+        token = 15; /* 0x0F identifier */
     }
     else if (ch == '<') {
         if (next_char() == '<') {
@@ -437,10 +437,13 @@ static void expect(unsigned int t)
 
 static unsigned int accept_type(void)
 {
-    if (accept(10/*number*/)) {
+    if (accept(11/*number*/)) {
         return 1;
     }
-    if (accept(11/*char*/)) {
+    if (accept(12/*char*/)) {
+        return 1;
+    }
+    if (accept(13/*string*/)) {
         return 1;
     }
     return 0;
@@ -569,12 +572,20 @@ static void parse_statement(void)
         emit_loop(h, s);
         get_token();
     }
-    else if (accept(6) != 0) {
+    else if (accept(9/*return*/) != 0) {
         if (accept(';') == 0) {
             parse_expression();
             expect(';');
         }
         emit_return();
+    }
+    else if (accept(10/*#asm*/)) {
+        while (token != 5/*end*/) {
+            expect('.');
+            expect(13/*"string"*/);
+            expect(1/*a string constant*/);
+        }
+        get_token(); /* end */
     }
     else { /* identifier */
         get_token();        /* ignore identifier */
@@ -604,25 +615,34 @@ static void parse_statement(void)
     }
 }
 
-
-
 static void parse_procedure(void)
 {
-}
+    unsigned int n = 0;
 
+    get_token(); /* id with name of procedure */
+    expect('(');
+    while (accept(')') == 0) {
+        n = n + 1;
+        get_token(); /* expect identifier 15 */
+        expect(':');
+        expect_type();
+        (void)accept(','); /* ignore trailing comma */
+    }
+
+    expect(4/*begin*/);
+    emit_func_begin(n);
+    while (token != 5/*end*/) {
+        parse_statement();
+    }
+    get_token(); /* end */
+    accept(';');
+    emit_func_end();
+}
 
 static void parse_module(void)
 {
     get_token();        /* ignore keyword `module` */
     get_token();        /* ignore name of module */
-    expect(';');
-
-    get_token();        /* ignore keyword `import` */
-    get_token();        /* ignore keyword `posix` 
-                           (must be the 1st import in Bootstrap Schick */
-    while (accept(',')) {
-        get_token();    /* ignore imported module names for now */
-    }
     expect(';');
 
     while (accept(4/*begin*/) == 0) { /* while NOT begin */
@@ -682,9 +702,9 @@ int main(void)
         else if (token == 7) { write(2, " else", 5); }
         else if (token == 8) { write(2, " while", 6); }
         else if (token == 9) { write(2, " return", 7); }
-        else if (token == 10) { write(2, " number", 7); }
-        else if (token == 11) { write(2, " char", 5); }
-        else if (token == 12) {
+        else if (token == 11) { write(2, " number", 7); }
+        else if (token == 12) { write(2, " char", 5); }
+        else if (token == 14) {
             write(2, " ID ", 4);
             write(2, token_buf, token_int);
         }
