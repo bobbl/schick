@@ -10,21 +10,21 @@ Error return codes
         0103 identifier expected
         0104 unknown identifier
         0105 function redefined
-        0106 type expected
+    0106 type expected
     0110 `begin` expected
     0199 expression expected
 
 
 Token
     operations    conditions    other    reserved words predefined identifiers
-                  50h 'P' =     28h (    03h procdure   0Ah number
+                  50h 'P' =     28h (    03h procedure  0Ah number
     41h 'A' <<    51h 'Q' <>    29h )    04h begin      0Bh char
     42h 'B' >>    52h 'R' <     2Ch ,    05h end
     43h 'C' -     53h 'S' >=    3Ah :    06h if
     44h 'D' |     54h 'T' >     3Bh ;    07h else
-    45h 'E' ^     55h 'U' <=    5Bh [    08h while
-    46h 'F' +                   5Dh ]    09h return     special
-    47h 'G' &                                           00h EOF
+    45h 'E' ^     55h 'U' <=             08h while
+    46h 'F' +                   5Bh [    09h return     special
+    47h 'G' &                   5Dh ]                   00h EOF
     48h 'H' *     61h 'a' :=                            01h string
     49h 'I' /     62h 'b' ->                            0Fh identifier
     4Ah 'J' %                                           5Eh '^' number
@@ -50,6 +50,133 @@ int getchar(void);
 void *malloc(unsigned long);
 int putchar(int);
 int write(int, char*, int);
+
+
+
+void emit_push()
+{
+    write(2, "PUSH\x0d\x0a", 6);
+}
+
+void emit_number(unsigned int imm)
+{
+    write(2, "number\x0d\x0a", 8);
+}
+
+void emit_string(unsigned int len, char *s)
+{
+    write(2, "string\x0d\x0a", 8);
+}
+
+void emit_store(unsigned int global, unsigned int ofs)
+{
+    write(2, "STORE\x0d\x0a", 7);
+}
+
+void emit_load(unsigned int global, unsigned int ofs)
+{
+    write(2, "LOAD\x0d\x0a", 6);
+}
+
+void emit_operation(unsigned int operation)
+{
+    write(2, "OPERATION\x0d\x0a", 11);
+}
+
+void emit_comp(unsigned int condition)
+{
+    write(2, "COMP\x0d\x0a", 6);
+}
+
+void emit_index_push(unsigned int global, unsigned int ofs)
+{
+    write(2, "PUSH INDEX\x0d\x0a", 12);
+}
+
+void emit_pop_store_array()
+{
+    write(2, "POP STORE ARRAY\x0d\x0a", 17);
+}
+
+void emit_index_load_array(unsigned int global, unsigned int ofs)
+{
+    write(2, "LOAD ARRAY\x0d\x0a", 12);
+}
+
+unsigned int emit_pre_while()
+{
+    write(2, "PRE WHILE\x0d\x0a", 11);
+}
+
+unsigned int emit_if(unsigned int condition)
+{
+    write(2, "IF\x0d\x0a", 4);
+}
+
+void emit_then_end(unsigned int insn_pos)
+{
+    write(2, "END (THEN)\x0d\x0a", 12);
+}
+
+void emit_else_end(unsigned int insn_pos)
+{
+    write(2, "END (ELSE)\x0d\x0a", 12);
+}
+
+static unsigned int emit_then_else(unsigned int insn_pos)
+{
+    write(2, "ELSE\x0d\x0a", 6);
+}
+
+static void emit_loop(unsigned int destination, unsigned int insn_pos)
+{
+    write(2, "LOOP\x0d\x0a", 6);
+}
+
+unsigned int emit_local_var(unsigned int init)
+{
+    write(2, "LOCAL VAR\x0d\x0a", 11);
+}
+
+unsigned int emit_global_var()
+{
+    write(2, "GLOBAL VAR\x0d\x0a", 12);
+}
+
+unsigned int emit_pre_call()
+{
+    write(2, "PRE CALL\x0d\x0a", 10);
+}
+
+void emit_arg()
+{
+    write(2, "ARG\x0d\x0a", 5);
+}
+
+unsigned int emit_call(unsigned int ofs, unsigned int pop, unsigned int save)
+{
+    write(2, "CALL\x0d\x0a", 6);
+}
+
+void emit_fix_call(unsigned int from, unsigned int to)
+{
+    write(2, "FIX CALL\x0d\x0a", 10);
+}
+
+unsigned int emit_func_begin(unsigned int n)
+{
+    write(2, "BEGIN (FUNC)\x0d\x0a", 14);
+}
+
+void emit_return()
+{
+    write(2, "RETURN\x0d\x0a", 8);
+}
+
+void emit_func_end()
+{
+    write(2, "END (PROCEDURE)\x0d\x0a", 17);
+}
 
 
 
@@ -104,7 +231,7 @@ static unsigned int token_cmp(const char *s, unsigned int n)
 
 static unsigned int next_char(void)
 {
-    const char  *classify  = "         ##  #                  #    JG!()HF,C.#^^^^^^^^^^:;R=T  __________________________[ ]E_ __________________________ D   ";
+    const char  *classify  = "         ##  #                  #    JG!()HF,C.#^^^^^^^^^^:;RPT  __________________________[ ]E_ __________________________ D   ";
         /*                    012345678901234567890123456789012345678901234567890123456789
                                         1         2         3         4         5
          ! = look at character for further processing
@@ -308,42 +435,171 @@ static void expect(unsigned int t)
     }
 }
 
+static unsigned int accept_type(void)
+{
+    if (accept(10/*number*/)) {
+        return 1;
+    }
+    if (accept(11/*char*/)) {
+        return 1;
+    }
+    return 0;
+}
 
+static void expect_type(void)
+{
+    if (accept_type() == 0) {
+        error(106); /* Error: type expected */
+    }
+}
 
-
+static void parse_factor(void);
 
 static void parse_expression(void)
 {
-    write(2, "expression\x0d\x0a", 12);
+    parse_factor();
+    while ((token & 240) == 64) {
+        emit_push();
+        unsigned int op = token & 15;
+        get_token();
+        parse_factor();
+        emit_operation(op);
+    }
+}
+
+static unsigned int parse_condition(void)
+{
+    parse_expression();
+    emit_push();
+    unsigned int cond = token & 15;
+    get_token();
+    parse_expression();
+    return emit_if(cond);
+}
+
+static void parse_call(void)
+{
+    unsigned int argno = 0;
+    unsigned int save = emit_pre_call();
+    if (accept(')') == 0) {
+        parse_expression();
+        emit_arg();
+        argno = argno + 1;
+        while (accept(',') != 0) {
+            parse_expression();
+            emit_arg();
+            argno = argno + 1;
+        }
+        expect(')');
+    }
+    emit_call(0, argno, save);
+}
+
+static void parse_factor(void)
+{
+    unsigned int sym;
+    unsigned int type;
+    unsigned int ofs;
+
+    while (token == '(') { /* '(' */
+        get_token();
+        parse_expression();
+        expect(')');
+        return;
+    }
+
     if (token == '^') { /* number */
+        emit_number(token_int);
         get_token();
     }
     else if (token == 1) { /* string */
+        emit_string(token_int, token_buf);
         get_token();
     }
-    else if (token == 12) { /* identifier */
+    else { /* identifier */
         get_token();
+
+        if (accept('(')) {
+            parse_call();
+        }
+        else if (accept('[') != 0) { /* array */
+            parse_expression();
+            expect(']');
+            emit_index_load_array(0, 0);
+        }
+        else { /* variable */
+            emit_load(0, 0);
+        }
     }
-    else error(199); /* expression expected */
 }
-
-
 
 static void parse_statement(void)
 {
-    write(2, "statement\x0d\x0a", 11);
-    get_token();        /* ignore identifier */
-    if (accept('.')) {
-        get_token();    /* ignore identifier */
-    }
+    unsigned int h;
+    unsigned int s;
 
-    if (accept('(')) {
-        if (accept(')') == 0) {
-            parse_expression();
-            while (accept(',') != 0) {
-                parse_expression();
+    if (accept(';')) {
+        /* nothing to do */
+    } else if (accept(6/*if*/) != 0) {
+        h = parse_condition();
+        expect(4/*begin*/);
+        while (token != 5/*end*/) {
+            if (token == 7/*else*/) {
+                s = emit_then_else(h);
+                get_token();
+                while (token != 5/*end*/) {
+                    parse_statement();
+                }
+                emit_else_end(s);
+                get_token();
+                return;
             }
-            expect(')');
+            parse_statement();
+        }
+        emit_then_end(h);
+        get_token();
+    }
+    else if (accept(8/*while*/) != 0) {
+        h = emit_pre_while();
+        s = parse_condition();
+        expect(4/*begin*/);
+        while (token != 5/*end*/) {
+            parse_statement();
+        }
+        emit_loop(h, s);
+        get_token();
+    }
+    else if (accept(6) != 0) {
+        if (accept(';') == 0) {
+            parse_expression();
+            expect(';');
+        }
+        emit_return();
+    }
+    else { /* identifier */
+        get_token();        /* ignore identifier */
+        if (accept('.')) {
+            get_token();    /* ignore identifier */
+        }
+
+        if (accept('(')) {
+            parse_call();
+        }
+        else if (accept('[') != 0) { /* array */
+            parse_expression();
+            expect(']');
+            expect('a'/*:=*/);
+            emit_index_push(0, 0);
+            parse_expression();
+            emit_pop_store_array();
+        }
+        else if (accept('a'/*:=*/) != 0) {
+            parse_expression();
+            emit_store(0, 0);
+        }
+        else if (accept(':') != 0) {
+            expect_type();
+            emit_local_var(0);
         }
     }
 }
