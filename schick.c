@@ -1,35 +1,32 @@
 /*  The programming language Schick
 
-    Scanner
-
 Error return codes
 
     0100 buffer overflow
     0101 invalid character
     0102 specific token expected
         0103 identifier expected
-        0104 unknown identifier
+    0104 unknown identifier
         0105 function redefined
     0106 type expected
     0110 `begin` expected
+    0111 statement expected
     0199 expression expected
 
 
 Token
     operations    conditions    other    reserved words predefined identifiers
-                  50h 'P' =     28h (    03h procedure  0Bh number
-    41h 'A' <<    51h 'Q' <>    29h )    04h begin      0Ch char
-    42h 'B' >>    52h 'R' <     2Ch ,    05h end        0Dh string
+                  50h 'P' =     28h (    03h procedure  0Dh number
+    41h 'A' <<    51h 'Q' <>    29h )    04h begin      0Eh char
+    42h 'B' >>    52h 'R' <     2Ch ,    05h end        0Fh string
     43h 'C' -     53h 'S' >=    3Ah :    06h if
     44h 'D' |     54h 'T' >     3Bh ;    07h else
     45h 'E' ^     55h 'U' <=             08h while
     46h 'F' +                   5Bh [    09h return     special
     47h 'G' &                   5Dh ]    0Ah #asm       00h EOF
-    48h 'H' *     61h 'a' :=                            01h string
-    49h 'I' /     62h 'b' ->                            0Fh identifier
+    48h 'H' *     61h 'a' :=             0Bh #forward   01h string
+    49h 'I' /     62h 'b' ->             0Ch var        1Fh identifier
     4Ah 'J' %                                           5Eh '^' number
-
-
 
 
 
@@ -52,6 +49,25 @@ int putchar(int);
 int write(int, char*, int);
 
 
+
+
+/* helper to write a 32 bit number to a char array */
+void set_32bit(unsigned char *p, unsigned int x)
+{
+    p[0] = x;
+    p[1] = x >> 8;
+    p[2] = x >> 16;
+    p[3] = x >> 24;
+}
+
+/* helper to read 32 bit number from a char array */
+unsigned int get_32bit(unsigned char *p)
+{
+    return p[0] +
+          (p[1] << 8) +
+          (p[2] << 16) +
+          (p[3] << 24);
+}
 
 void emit_push()
 {
@@ -176,6 +192,17 @@ void emit_return()
 void emit_func_end()
 {
     write(2, "END (PROCEDURE)\x0d\x0a", 17);
+}
+
+unsigned int emit_begin()
+{
+    write(2, "BOF\x0d\x0a", 5);
+}
+
+
+unsigned int emit_end()
+{
+    write(2, "EOF\x0d\x0a", 5);
 }
 
 
@@ -337,7 +364,7 @@ static void get_token(void)
         token_buf[token_int] = 0;
 
         /* search keyword */
-        const char *keywords = "9procedure5begin3end2if4else5while6return4#asm6number4char6string0";
+        const char *keywords = "9procedure5begin3end2if4else5while6return4#asm8#forward3var6number4char6string0";
         i = 0;
         len = 9;
         token = 3;
@@ -351,7 +378,7 @@ static void get_token(void)
             i = i + len + 1;
             len = keywords[i] - '0';
         }
-        token = 15; /* 0x0F identifier */
+        token = 31; /* 0x1F identifier */
     }
     else if (ch == '<') {
         if (next_char() == '<') {
@@ -410,6 +437,67 @@ static void get_token(void)
 
 
 
+/**********************************************************************
+ * Symbol Management
+ **********************************************************************/
+
+
+static unsigned int sym_lookup(void)
+{
+    if (token != 31) {
+        error(103); /* Error: identifier expected */
+    }
+    unsigned int s = syms_head;
+    while (s < buf_size) {
+        unsigned int len = buf[s + 5];
+        if (len == token_int) {
+            if (token_cmp((char *)buf + s + 6, token_int) != 0) {
+                return s;
+            }
+        }
+        s = s + len + 6;
+    }
+    return 0;
+}
+
+static void sym_append(unsigned int addr, unsigned int type)
+{
+    unsigned int i = token_int;
+    syms_head = syms_head - token_int - 6;
+    unsigned char *s = buf + syms_head;
+
+    set_32bit(s, addr);
+    s[4] = type;
+    s[5] = i;
+
+    /* copy backwards in case the token and the symbol table overlap */
+    while (i != 0) {
+        i = i - 1;
+        s[6 + i] = token_buf[i];
+    }
+    get_token();
+}
+
+
+static void sym_fix(unsigned int sym, unsigned int func_pos)
+{
+    unsigned char *s = buf + sym;
+    unsigned int i = get_32bit(buf + sym);
+    unsigned int next;
+
+    if (s[4] != 72) {
+        error(105); /* Error: function redefined */
+    }
+
+    while (i != 0) {
+        next = get_32bit(buf + i);
+        emit_fix_call(i, func_pos);
+        i = next;
+    }
+    set_32bit(s, func_pos);
+    s[4] = 73;
+}
+
 
 
 
@@ -431,19 +519,20 @@ static unsigned int accept(unsigned int ch)
 static void expect(unsigned int t)
 {
     if (accept(t) == 0) {
+        error(200+t);
         error(102); /* Error: specific token expected */
     }
 }
 
 static unsigned int accept_type(void)
 {
-    if (accept(11/*number*/)) {
+    if (accept(13/*number*/)) {
         return 1;
     }
-    if (accept(12/*char*/)) {
+    if (accept(14/*char*/)) {
         return 1;
     }
-    if (accept(13/*string*/)) {
+    if (accept(15/*string*/)) {
         return 1;
     }
     return 0;
@@ -480,7 +569,7 @@ static unsigned int parse_condition(void)
     return emit_if(cond);
 }
 
-static void parse_call(void)
+static void parse_call(unsigned int sym, unsigned int type, unsigned int ofs)
 {
     unsigned int argno = 0;
     unsigned int save = emit_pre_call();
@@ -495,7 +584,15 @@ static void parse_call(void)
         }
         expect(')');
     }
-    emit_call(0, argno, save);
+
+    unsigned int link = emit_call(ofs, argno, save);
+    if (type == 72) {
+        set_32bit(buf + link, ofs); 
+            /* overwrite the call to an undefined address with a link
+               to the rest of the linked list of calls to this not yet
+               defined function */
+        set_32bit(buf + sym, link);
+    }
 }
 
 static void parse_factor(void)
@@ -520,18 +617,24 @@ static void parse_factor(void)
         get_token();
     }
     else { /* identifier */
+        sym = sym_lookup();
         get_token();
+        if (sym == 0) {
+            error(104); /* Error: unknown identifier */
+        }
+        type = buf[sym + 4];
+        ofs = get_32bit(buf + sym);
 
         if (accept('(')) {
-            parse_call();
+            parse_call(sym, type, ofs);
         }
         else if (accept('[') != 0) { /* array */
             parse_expression();
             expect(']');
-            emit_index_load_array(0, 0);
+            emit_index_load_array(type & 1, ofs);
         }
         else { /* variable */
-            emit_load(0, 0);
+            emit_load(type & 1, ofs);
         }
     }
 }
@@ -582,87 +685,127 @@ static void parse_statement(void)
     else if (accept(10/*#asm*/)) {
         while (token != 5/*end*/) {
             expect('.');
-            expect(13/*"string"*/);
+            expect(15/*"string"*/);
             expect(1/*a string constant*/);
         }
         get_token(); /* end */
     }
     else { /* identifier */
-        get_token();        /* ignore identifier */
-        if (accept('.')) {
-            get_token();    /* ignore identifier */
-        }
-
-        if (accept('(')) {
-            parse_call();
-        }
-        else if (accept('[') != 0) { /* array */
-            parse_expression();
-            expect(']');
-            expect('a'/*:=*/);
-            emit_index_push(0, 0);
-            parse_expression();
-            emit_pop_store_array();
-        }
-        else if (accept('a'/*:=*/) != 0) {
-            parse_expression();
-            emit_store(0, 0);
-        }
-        else if (accept(':') != 0) {
+        unsigned int sym = sym_lookup();
+        if (sym == 0) {
+            /* unknown identifier => must be declaration of variable */
+            sym_append(emit_local_var(0), 74); /* local variable */
+            expect(':');
             expect_type();
-            emit_local_var(0);
+            accept(';');
+        }
+        else {
+            unsigned int type = buf[sym + 4];
+            unsigned int ofs = get_32bit(buf + sym);
+            get_token();
+
+            if (accept('(')) {
+                parse_call(sym, type, ofs);
+            }
+            else if (accept('[') != 0) { /* array */
+                parse_expression();
+                expect(']');
+                expect('a'/*:=*/);
+                emit_index_push(type & 1, ofs);
+                parse_expression();
+                emit_pop_store_array();
+            }
+            else if (accept('a'/*:=*/) != 0) { /* assignment to variable */
+                parse_expression();
+                emit_store(type & 1, ofs);
+            }
+            else if (accept(':') != 0) {
+                /* Declaration of variable, but identifier is already used.
+                   Fake the token buffer for sym_append() */
+                token_buf = (char *)buf + sym + 6;
+                token_int = buf[sym + 5];
+                sym_append(emit_local_var(0), 74); /* local variable */
+                expect(':');
+                expect_type();
+                accept(';');
+            }
+            else {
+                error(111); /* Error: statement expected */
+            }
         }
     }
 }
 
 static void parse_procedure(void)
 {
-    unsigned int n = 0;
+    unsigned int sym = sym_lookup();
+    if (sym != 0) {
+        get_token();
+    }
+    else {
+        sym_append(0, 72); /* undefined function */
+        /* get_token(); implicit in sym_append() */
+        sym = syms_head;
+    }
 
-    get_token(); /* id with name of procedure */
+    unsigned int restore_head = syms_head;
+    unsigned int n = 0;
     expect('(');
     while (accept(')') == 0) {
         n = n + 1;
-        get_token(); /* expect identifier 15 */
-        expect(':');
+        if (token == 31/*an identifier*/) {
+            sym_append(n, 74); /* local argument */
+            expect(':');
+        }
         expect_type();
         (void)accept(','); /* ignore trailing comma */
     }
 
-    expect(4/*begin*/);
-    emit_func_begin(n);
-    while (token != 5/*end*/) {
-        parse_statement();
+    /* optional return type */
+    if (accept(':')) {
+        expect_type();
     }
-    get_token(); /* end */
+
+    if (accept(15/*#forward*/) == 0) {
+        expect(4/*begin*/);
+        sym_fix(sym, emit_func_begin(n));
+        while (token != 5/*end*/) {
+            parse_statement();
+        }
+        get_token(); /* end */
+        emit_func_end();
+    }
     accept(';');
-    emit_func_end();
+    syms_head = restore_head; /* remove local variables from symbol table */
 }
 
 static void parse_module(void)
 {
-    get_token();        /* ignore keyword `module` */
-    get_token();        /* ignore name of module */
-    expect(';');
+    get_token(); /* ignore keyword `module` */
+    get_token(); /* ignore name of module */
+    accept(';');
 
     while (accept(4/*begin*/) == 0) { /* while NOT begin */
-        if (accept(3/*procedure*/)) {
+        if (accept(2/*var*/)) {
+            while (token == 31/*an identifier*/) {
+                sym_append(emit_global_var(), 71); /* global variable */
+                expect(':');
+                expect_type();
+                accept(';');
+            }
+        }
+        else if (accept(3/*procedure*/)) {
             parse_procedure();
         }
         else error(110);
     }
 
-    parse_statement();
-    while (accept(';')) {
-        if (token != 5/*end*/) {
-            parse_statement();
-        }
+    while (token != 5/*end*/) {
+        parse_statement();
     }
-
     expect(5/*end*/);
     expect('.');
 }
-
 
 int main(void)
 {
@@ -671,47 +814,13 @@ int main(void)
     syms_head = buf_size;
     lineno    = 1;
     code_pos  = 0;
+
     (void)next_char();
-
-    get_token();
+    token_int = 4;
+    token_buf = "main";
+    sym_append(emit_begin(), 72); /* implicit get_token() */
     parse_module();
-
-/*
-    token = 1;
-    while (token != 0) {
-        get_token();
-        itoa4(token);
-
-        if (token == '^') {
-            write(2, " NUM", 4);
-        }
-        else if (token > 31) {
-            buf[0] = ' ';
-            buf[1] = token;
-            write(2, buf, 2);
-        }
-        else if (token == 1) {
-            write(2, " STR ", 5);
-            write(2, token_buf, token_int);
-
-        }
-        else if (token == 3) { write(2, " procedure", 10); }
-        else if (token == 4) { write(2, " begin", 6); }
-        else if (token == 5) { write(2, " end", 4); }
-        else if (token == 6) { write(2, " if", 3); }
-        else if (token == 7) { write(2, " else", 5); }
-        else if (token == 8) { write(2, " while", 6); }
-        else if (token == 9) { write(2, " return", 7); }
-        else if (token == 11) { write(2, " number", 7); }
-        else if (token == 12) { write(2, " char", 5); }
-        else if (token == 14) {
-            write(2, " ID ", 4);
-            write(2, token_buf, token_int);
-        }
-
-        write(2, "\x0d\x0a", 2);
-    }
-*/
+    write(1, (char *)buf, emit_end());
 
     return 0;
 }
