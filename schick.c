@@ -32,16 +32,6 @@ Token
 
 */
 
-#include <stdio.h>
-
-
-/* constants */
-unsigned int buf_size;
-
-/* global variables */
-unsigned char *buf;
-unsigned int code_pos;
-
 void exit(int);
 int getchar(void);
 void *malloc(unsigned long);
@@ -866,20 +856,23 @@ static void get_token(void)
 
         /* hexadecimal appended? */
         (void)next_char();
-        while (1) {
+        i = 0;
+        while (i < 16) {
             if (ch_class == '^') { /* '0' ... '9' } */
                 i = ch - 48;
             } else {
                 if (ch_class == '_') { /* 'A' ... 'F' */
                     i = ch - 55;
                 } else {
-                    break;
+                    i = 16;
                 }
             }
-            len = next_char() - 48; /* '0' */
-            if (len > 9) { len = len - 7; }
-            ch = (i << 4) + len;
-            store_char();
+            if (i < 16) {
+                len = next_char() - 48; /* '0' */
+                if (len > 9) { len = len - 7; }
+                ch = (i << 4) + len;
+                store_char();
+            }
         }
         token = 1; /* 0x01 string */
     }
@@ -1314,7 +1307,7 @@ static void parse_procedure(void)
     syms_head = restore_head; /* remove local variables from symbol table */
 }
 
-static unsigned int parse_module(void)
+static void parse_declaration(void)
 {
     get_token(); /* ignore keyword `module` */
     get_token(); /* ignore name of module */
@@ -1334,15 +1327,15 @@ static unsigned int parse_module(void)
         }
         else error(110);
     }
+}
 
-    unsigned int entry_point = code_pos;
-
+static void parse_main(void)
+{
     while (token != 5/*end*/) {
         parse_statement();
     }
     expect(5/*end*/);
     expect('.');
-    return entry_point;
 }
 
 int main(void)
@@ -1354,13 +1347,14 @@ int main(void)
     code_pos  = 0;
 
     (void)next_char();
-    unsigned int call_main = emit_begin();
     get_token();
-    unsigned int entry_point = parse_module();
-    emit_fix_call(call_main, entry_point);
+    unsigned int call_main = emit_begin();
 
-    emit32(0x05d06893); /* or x17, x0, 93 */
-    emit32(0x00000073); /* ecall */
+    parse_declaration();
+    emit_fix_call(call_main, code_pos);
+    parse_main();
+    emit32(97544339);   /* 93 68 D0 05  or x17, x0, 93 */
+    emit32(115);        /* 73 00 00 00  ecall */
     write(1, (char *)buf, emit_end());
 
     return 0;
