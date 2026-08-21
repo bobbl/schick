@@ -5,7 +5,6 @@ begin
   #asm
     .string ''93080004  /* li a7, 64 # sys_write        */
     .string ''73000000  /* ecall                        */
-    .string ''67800000  /* ret                          */
   end;
 end;
 
