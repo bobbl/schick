@@ -84,7 +84,7 @@ begin
       DigitBuf16[i] := (x % 10) + 48 // +'0'
       x := x / 10
     end
-    PosixWrite(2, DigitBuf16[i ... ], 16 - i)
+    PosixWrite(2, DigitBuf16[i .. ], 16 - i)
   end
 end
 

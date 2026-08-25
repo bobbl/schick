@@ -11,7 +11,6 @@ Error return codes
     0106 type expected
     0110 `begin` of main routine  expected
     0111 statement expected
-    0112 `...` needs 3 dots
     0199 expression expected
 
 
@@ -27,7 +26,7 @@ Token
     47h 'G' &                   5Dh ]    0Ah #asm
     48h 'H' *     61h 'a' :=             0Bh #forward
     49h 'I' /     62h 'b' ->             0Ch var
-    4Ah 'J' %     63h 'c' ...
+    4Ah 'J' %     63h 'c' ..
 
     special
     00h EOF
@@ -966,11 +965,8 @@ static void get_token(void)
     }
     else if (ch == '.') {
         if (next_char() == '.') {
-            if (next_char() != '.') {
-                error(112); /* `...` needs 3 dots */
-            }
             (void)next_char();
-            token = 'c'; /* ... */
+            token = 'c'; /* .. */
         }
         /* token = '.' 0x2E */
     }
@@ -1256,7 +1252,7 @@ static void parse_statement(void)
     else if (accept(9/*return*/) != 0) {
         if (accept(';') == 0) {
             parse_expression();
-            expect(';');
+            accept(';');
         }
         emit_return();
     }
