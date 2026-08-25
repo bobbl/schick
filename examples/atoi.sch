@@ -49,7 +49,7 @@ begin
   end
 end
 
-procedure PosixWrite(FileDesc: number, Buf: string, Len: number)
+procedure PosixWrite(FileDesc: number, Buf: []byte, Len: number)
 begin
   #asm
     .string ''93080004  //    li a7, 64         # sys_write
@@ -57,7 +57,7 @@ begin
   end
 end
 
-procedure PosixRead(FileDesc: number, Buf: string, Len: number)
+procedure PosixRead(FileDesc: number, Buf: []byte, Len: number)
 begin
   #asm
     .string ''9308F003  //    li a7, 63         # sys_read
@@ -68,7 +68,7 @@ end
 
 
 var
-  DigitBuf16 : string 
+  DigitBuf16 : []byte
 
 procedure PrintNumber(n: number)
 begin

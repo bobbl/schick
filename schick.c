@@ -20,17 +20,20 @@ Token
                   50h 'P' =     28h (    03h procedure  0Dh number
     41h 'A' <<    51h 'Q' <>    29h )    04h begin      0Eh char
     42h 'B' >>    52h 'R' <     2Ch ,    05h end        0Fh string
-    43h 'C' -     53h 'S' >=    3Ah :    06h if
-    44h 'D' |     54h 'T' >     3Bh ;    07h else
-    45h 'E' ^     55h 'U' <=             08h while
-    46h 'F' +                   5Bh [    09h return     special
-    47h 'G' &                   5Dh ]    0Ah #asm       00h EOF
-    48h 'H' *     61h 'a' :=             0Bh #forward   01h string
-    49h 'I' /     62h 'b' ->             0Ch var        1Fh identifier
-    4Ah 'J' %     63h 'c' ...                           5Eh '^' number
+    43h 'C' -     53h 'S' >=    3Ah :    06h if         10h byte
+    44h 'D' |     54h 'T' >     3Bh ;    07h else       11h boolean
+    45h 'E' ^     55h 'U' <=             08h while      12h false
+    46h 'F' +                   5Bh [    09h return     13h true
+    47h 'G' &                   5Dh ]    0Ah #asm
+    48h 'H' *     61h 'a' :=             0Bh #forward
+    49h 'I' /     62h 'b' ->             0Ch var
+    4Ah 'J' %     63h 'c' ...
 
-
-
+    special
+    00h EOF
+    01h a string
+    1Fh an identifier
+    5Eh '^' a number
 */
 
 void exit(int);
@@ -899,7 +902,7 @@ static void get_token(void)
         token_buf[token_int] = 0;
 
         /* search keyword */
-        const char *keywords = "9procedure5begin3end2if4else5while6return4#asm8#forward3var6number4char6string0";
+        const char *keywords = "9procedure5begin3end2if4else5while6return4#asm8#forward3var6number4char6string4byte7boolean5false4true0";
         i = 0;
         len = 9;
         token = 3;
@@ -1070,16 +1073,30 @@ static void expect(unsigned int t)
 
 static unsigned int accept_type(void)
 {
-    if (accept(13/*number*/)) {
-        return 1;
+    /* accept any combination of [ ] -> followed by a type identifier */
+    while (1) {
+        if (token == 'b'/* -> */) {
+            get_token();
+        }
+        if (token == 91/* [ */) {
+            get_token();
+        }
+        else if (token == 93/* ] */) {
+            get_token();
+        }
+        else if ((token - 13) <= 4) {
+            /* 13 number
+               14 char
+               15 string
+               16 byte
+               17 boolean */
+            get_token();
+            return 1;
+        }
+        else {
+            return 0;
+        }
     }
-    if (accept(14/*char*/)) {
-        return 1;
-    }
-    if (accept(15/*string*/)) {
-        return 1;
-    }
-    return 0;
 }
 
 static void expect_type(void)
@@ -1160,12 +1177,21 @@ static void parse_factor(void)
         emit_string(token_int, token_buf);
         get_token();
     }
+    else if (token == 18/*false*/) {
+        emit_number(0);
+        get_token();
+    }
+    else if (token == 19/*true*/) {
+        emit_number(1);
+        get_token();
+    }
     else { /* identifier */
         sym = sym_lookup();
         get_token();
         if (sym == 0) {
             error(104); /* Error: unknown identifier */
         }
+
         type = buf[sym + 4];
         ofs = get_32bit(buf + sym);
 
