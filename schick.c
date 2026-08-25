@@ -828,13 +828,20 @@ static void get_token(void)
 
     while (ch_class == '#') { /* ch = 9,10,13,' ','/' */
         if (ch == '/') {
-            if (next_char() != '*') {
-                token = 73; /* 'I' /  */
-                return;
-            }
-            while (next_char() != '/') {
-                while (ch != '*') {
+            if (next_char() == '/') {
+                while (ch != 10) {
                     (void)next_char();
+                }
+            }
+            else {
+                if (ch != '*') {
+                    token = 73; /* 'I' /  */
+                    return;
+                }
+                while (next_char() != '/') {
+                    while (ch != '*') {
+                        (void)next_char();
+                    }
                 }
             }
         }

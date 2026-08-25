@@ -3,8 +3,8 @@ module AToI
 procedure PosixExit(ExitCode: number)
 begin
   #asm
-    .string ''9308D005  /* li a7, 93 # sys_exit         */
-    .string ''73000000  /* ecall                        */
+    .string ''9308D005  //    li a7, 93         # sys_exit
+    .string ''73000000  //    ecall
   end
 end
 
@@ -41,34 +41,34 @@ begin
     .string ''73000000  /*    ecall                             */
     .string ''83284100  /*    lw a7, 4(sp)      # end + size    */
 
-    .string ''93050500  /*    mv a1, a0                         */
-    .string ''13050000  /*    li a0, 0                          */
-    .string ''63941501  /*    bne a1, a7, .+8                   */
-    .string ''03250100  /*    lw a0, 0(sp)      # old end       */
-    .string ''1301C100  /* 1: add sp, sp, 12                    */
+    .string ''93050500  //    mv a1, a0
+    .string ''13050000  //    li a0, 0
+    .string ''63941501  //    bne a1, a7, .+8
+    .string ''03250100  //    lw a0, 0(sp)      # old end
+    .string ''1301C100  // 1: add sp, sp, 12
   end
 end
 
 procedure PosixWrite(FileDesc: number, Buf: string, Len: number)
 begin
   #asm
-    .string ''93080004  /*    li a7, 64         # sys_write     */
-    .string ''73000000  /*    ecall                             */
+    .string ''93080004  //    li a7, 64         # sys_write
+    .string ''73000000  //    ecall
   end
 end
 
 procedure PosixRead(FileDesc: number, Buf: string, Len: number)
 begin
   #asm
-    .string ''9308F003  /*    li a7, 63         # sys_read      */
-    .string ''73000000  /*    ecall                             */
+    .string ''9308F003  //    li a7, 63         # sys_read
+    .string ''73000000  //    ecall
   end
 end
 
 
 
 var
-  DigitBuf16 : string
+  DigitBuf16 : string 
 
 procedure PrintNumber(n: number)
 begin
@@ -77,11 +77,11 @@ begin
   else
     x : number
     x := n
-    i : number
+    i : number 
     i := 16
     while x <> 0 begin
       i := i - 1
-      DigitBuf16[i] := (x % 10) + 48
+      DigitBuf16[i] := (x % 10) + 48 // +'0'
       x := x / 10
     end
     PosixWrite(2, DigitBuf16[i ... ], 16 - i)
