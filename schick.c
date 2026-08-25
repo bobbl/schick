@@ -9,8 +9,9 @@ Error return codes
     0104 unknown identifier
         0105 function redefined
     0106 type expected
-    0110 `begin` expected
+    0110 `begin` of main routine  expected
     0111 statement expected
+    0112 `...` needs 3 dots
     0199 expression expected
 
 
@@ -26,7 +27,7 @@ Token
     47h 'G' &                   5Dh ]    0Ah #asm       00h EOF
     48h 'H' *     61h 'a' :=             0Bh #forward   01h string
     49h 'I' /     62h 'b' ->             0Ch var        1Fh identifier
-    4Ah 'J' %                                           5Eh '^' number
+    4Ah 'J' %     63h 'c' ...                           5Eh '^' number
 
 
 
@@ -953,9 +954,18 @@ static void get_token(void)
         }
         /* token = 'C' - */
     }
-
+    else if (ch == '.') {
+        if (next_char() == '.') {
+            if (next_char() != '.') {
+                error(112); /* `...` needs 3 dots */
+            }
+            (void)next_char();
+            token = 'c'; /* ... */
+        }
+        /* token = '.' 0x2E */
+    }
     else {
-        /* case for ()+,.;=[] */
+        /* case for ()+,;=[] */
         (void)next_char();
     }
 }
@@ -1157,8 +1167,16 @@ static void parse_factor(void)
         }
         else if (accept('[') != 0) { /* array */
             parse_expression();
-            expect(']');
-            emit_index_load_array(type & 1, ofs);
+            if (accept('c'/*...*/)) {
+                expect(']');
+                emit_push();
+                emit_load(type & 1, ofs);
+                emit_operation(6); /* add */
+            }
+            else {
+                expect(']');
+                emit_index_load_array(type & 1, ofs);
+            }
         }
         else { /* variable */
             emit_load(type & 1, ofs);
@@ -1314,7 +1332,7 @@ static void parse_declaration(void)
     accept(';');
 
     while (accept(4/*begin*/) == 0) { /* while NOT begin */
-        if (accept(2/*var*/)) {
+        if (accept(12/*var*/)) {
             while (token == 31/*an identifier*/) {
                 sym_append(emit_global_var(), 71); /* global variable */
                 expect(':');

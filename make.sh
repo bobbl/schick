@@ -6,6 +6,7 @@ help () {
     echo
     echo "  test_hello    Build bootstrap Schick compiler from C and run hello.sch"
     echo "  test_punycc   Use PunyCC to build boottrap Schick compiler"
+    echo "  run <file>    Compile Schick file and execute it"
     echo
     echo "Environment variables:"
     echo "  CC=           native C compiler (gcc or clang)"
@@ -25,15 +26,18 @@ QEMU_RV32=${QEMU_RV32:-qemu-riscv32}
 
 
 
-
-# Compile hello.sch with compiler written in C
-test_hello () {
+# Compile and run a Schick file with the compiler written in C
+# $1 Schick source file name
+run () {
     mkdir -p build
     cd build
     "$CC" -o schick.c.x ../schick.c
-    ./schick.c.x < ../hello.sch > hello.rv32
-    chmod +x hello.rv32
-    "$QEMU_RV32" hello.rv32
+    cd ..
+
+    elf=build/$(basename "$1" .sch).rv32
+    ./build/schick.c.x < "$1" > "$elf"
+    chmod +x "$elf"
+    "$QEMU_RV32" "$elf"
 }
 
 
@@ -70,8 +74,18 @@ do
     case $1 in
         help|-h)        help ;;
 
-        test_hello)     test_hello ;;
-        test_punycc)    test_punycc ;;
+        test_hello)
+            run examples/hello.sch
+            ;;
+
+        test_punycc)
+            test_punycc
+            ;;
+
+        run)
+            run "$2"
+            shift
+            ;;
 
         disasm)
             riscv64-linux-gnu-objdump -b binary -m riscv -D "$2"
