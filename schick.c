@@ -1269,9 +1269,19 @@ static void parse_statement(void)
         unsigned int sym = sym_lookup();
         if (sym == 0) {
             /* unknown identifier => must be declaration of variable */
-            sym_append(emit_local_var(0), 74); /* local variable */
+            sym_append(0 /* don't care */, 74);
+                /* Add a local variable to the symbol table. Must be done before
+                   further parsing, otherwise the name of the identifier in
+                   token_buf is lost. But at this point the address is unknown
+                   and will be filled later with set_32bit() */
             expect(':');
             expect_type();
+            s = 0;
+            if (accept('a'/* := */) != 0) {
+                parse_expression();
+                s = 1;
+            }
+            set_32bit(buf + syms_head, emit_local_var(s));
             accept(';');
         }
         else {
@@ -1296,6 +1306,7 @@ static void parse_statement(void)
             }
             else if (accept(':') != 0) {
                 /* Declaration of variable, but identifier is already used.
+                   Therefore cover the old declaration temporarily.
                    Fake the token buffer for sym_append() */
                 token_buf = (char *)buf + sym + 6;
                 token_int = buf[sym + 5];
