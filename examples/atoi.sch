@@ -66,9 +66,9 @@ begin
 end
 
 
-
-var
+//var
   DigitBuf16 : []byte
+
 
 procedure PrintNumber(n: number)
 begin

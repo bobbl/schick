@@ -1,4 +1,4 @@
-module AToI
+module Lexer
 
 procedure PosixExit(ExitCode: number)
 begin
@@ -66,8 +66,12 @@ begin
 end
 
 
+//const
+  tkAString     = 1
+  tkAnIdent     = 31
+  tkANumber     = 94
 
-var
+//var
   BufSize       : number        // total size of the buffer
   Buf           : []byte        // the buffer for everything
   CodePos       : number        // position in the buffer for code generation
@@ -238,14 +242,14 @@ begin
         StoreChar()
       end
     end
-    Token := 1/* a string */
+    Token := tkAString
   else
     if ChClass = 94/* ^ */ begin /* 0...9 */
       while ChClass = 94 begin
         TokenInt := (10 * TokenInt) + Ch - 48
         NextChar()
       end
-      Token := 94/* ^ a number*/
+      Token := tkANumber
     else
       if ChClass = 95/* _ */ begin /* letter or underscore */
 
@@ -271,7 +275,7 @@ begin
           i := i + Len + 1
           Len := Keywords[i] - 48
         end
-        Token := 31 // 1Fhex an identifier
+        Token := tkAnIdent
       else
         if Ch = 60/* < */ begin
           NextChar()

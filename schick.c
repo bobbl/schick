@@ -11,8 +11,16 @@ Error return codes
     0106 type expected
     0110 `begin` of main routine  expected
     0111 statement expected
+    0112 number expected (in constant declaration)
     0199 expression expected
 
+Symbol Type
+
+    70 global constant (32 bit number)
+    71 global variable
+    72 undefined function
+    73 defined function
+    74 local variable (or argument)
 
 Token
     operations    conditions    other    reserved words predefined identifiers
@@ -215,6 +223,7 @@ void emit_store(unsigned int global, unsigned int ofs)
             }
             return;
         }
+        /* more than 13 local vars: fall back to stack */
     }
     emit32(73763 +
         (global << 15) +
@@ -233,12 +242,11 @@ void emit_load(unsigned int global, unsigned int ofs)
             last_insn_type = 11; /* push reg */
             return;
         }
+        /* more than 13 local vars: fall back to stack */
     }
-    else {
-        emit_isdo(ofs << 2, global, reg_pos, 73731);
-            /* LW reg_pos, ofs(REG[2+global]) */
-        last_insn_type = 13; /* push mem */
-    }
+    emit_isdo(ofs << 2, global, reg_pos, 73731);
+        /* LW reg_pos, ofs(REG[2+global]) */
+    last_insn_type = 13; /* push mem */
 }
 
 /* Same as emit_isdo(), but rs=reg_pos and if REG[reg_pos] is loaded from
@@ -1170,6 +1178,8 @@ static void parse_factor(void)
         get_token();
     }
     else if (token == 1) { /* string */
+        set_32bit((unsigned char *)token_buf + token_int, 0);
+            /* append 4 zero bytes to simplify alignment in the backends */
         emit_string(token_int, token_buf);
         get_token();
     }
@@ -1206,6 +1216,9 @@ static void parse_factor(void)
                 expect(']');
                 emit_index_load_array(type & 1, ofs);
             }
+        }
+        else if (type == 70) { /* global constant */
+            emit_number(ofs);
         }
         else { /* variable */
             emit_load(type & 1, ofs);
@@ -1361,7 +1374,6 @@ static void parse_procedure(void)
         get_token(); /* end */
         emit_func_end();
     }
-    accept(';');
     syms_head = restore_head; /* remove local variables from symbol table */
 }
 
@@ -1372,18 +1384,26 @@ static void parse_declaration(void)
     accept(';');
 
     while (accept(4/*begin*/) == 0) { /* while NOT begin */
-        if (accept(12/*var*/)) {
-            while (token == 31/*an identifier*/) {
-                sym_append(emit_global_var(), 71); /* global variable */
-                expect(':');
+        if (token == 31/*an identifier*/) {
+            sym_append(emit_global_var(), 71/*global variable*/);
+            if (accept(':')) {
                 expect_type();
-                accept(';');
             }
+            if (accept('P'/* = */)) {
+                if (token != 94/*a number*/) {
+                    error(112); /* Error: number expected for constant */
+                }
+                buf[syms_head + 4] = 70/*global constant*/;
+                set_32bit(buf + syms_head, token_int);
+                get_token();
+            }
+            accept(';');
         }
         else if (accept(3/*procedure*/)) {
             parse_procedure();
         }
         else error(110);
+        accept(';');
     }
 }
 
