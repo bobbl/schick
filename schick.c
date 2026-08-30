@@ -1226,6 +1226,18 @@ static void parse_factor(void)
     }
 }
 
+static void parse_statement(void);
+
+static void parse_scope(void)
+{
+    unsigned int s = emit_scope_begin();
+    while (token != 5/*end*/) {
+        parse_statement();
+    }
+    get_token(); /* end */
+    emit_scope_end(s);
+}
+
 static void parse_statement(void)
 {
     unsigned int h;
@@ -1236,31 +1248,27 @@ static void parse_statement(void)
     } else if (accept(6/*if*/) != 0) {
         h = parse_condition();
         expect(4/*begin*/);
+        s = emit_scope_begin();
         while (token != 5/*end*/) {
-            if (token == 7/*else*/) {
+            if (accept(7/*else*/)) {
+                emit_scope_end(s);
                 s = emit_then_else(h);
-                get_token();
-                while (token != 5/*end*/) {
-                    parse_statement();
-                }
+                parse_scope();
                 emit_else_end(s);
-                get_token();
                 return;
             }
             parse_statement();
         }
+        get_token(); /* end */
+        emit_scope_end(s);
         emit_then_end(h);
-        get_token();
     }
     else if (accept(8/*while*/) != 0) {
         h = emit_pre_while();
         s = parse_condition();
         expect(4/*begin*/);
-        while (token != 5/*end*/) {
-            parse_statement();
-        }
+        parse_scope();
         emit_loop(h, s);
-        get_token();
     }
     else if (accept(9/*return*/) != 0) {
         if (accept(';') == 0) {
@@ -1368,10 +1376,7 @@ static void parse_procedure(void)
     if (accept(15/*#forward*/) == 0) {
         expect(4/*begin*/);
         sym_fix(sym, emit_func_begin(n));
-        while (token != 5/*end*/) {
-            parse_statement();
-        }
-        get_token(); /* end */
+        parse_scope();
         emit_func_end();
     }
     syms_head = restore_head; /* remove local variables from symbol table */
@@ -1409,10 +1414,7 @@ static void parse_declaration(void)
 
 static void parse_main(void)
 {
-    while (token != 5/*end*/) {
-        parse_statement();
-    }
-    expect(5/*end*/);
+    parse_scope();
     expect('.');
 }
 
