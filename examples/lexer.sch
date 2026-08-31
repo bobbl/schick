@@ -66,10 +66,6 @@ begin
 end
 
 
-//const
-  tkAString     = 1
-  tkAnIdent     = 31
-  tkANumber     = 94
 
 //var
   BufSize       : number        // total size of the buffer
@@ -79,20 +75,22 @@ end
   NumGlobals    : number        // number of global variables
 
   RegPos        : number
-  LastInsn      : number
-  LastInsnType  : number
+  LastInsn      : number        // itXXX constants
+  LastInsnType  : number        // itXXX constants
 
-  DigitBuf16    : []byte
+tkAString       = 1
+tkAnIdent       = 31
+tkANumber       = 94
 
-  Ch            : number
-  ChClass       : number
-  LineNo        : number
-  Token         : number
-  TokenInt      : number
-  TokenSize     : number
-  TokenBuf      : []byte
-  SymsHead      : number
-
+DigitBuf16      : []byte
+Ch              : number
+ChClass         : number
+LineNo          : number
+Token           : number
+TokenInt        : number
+TokenSize       : number
+TokenBuf        : []byte
+SymsHead        : number
 
 
 procedure PrintNumber(n: number)
@@ -214,34 +212,38 @@ begin
 
   Token := ChClass
   if Ch = 39/* ' */ begin
-    NextChar()
-    while Ch <> 39/* ' */ begin
-      StoreChar()
-    end
 
-    // hexadecimal pair appended?
-    NextChar()
-    i := 0
-    while i < 16 begin
-      if ChClass = 94/* ^ */ begin /* 0...9 */
-        i := Ch - 48
-      else
-        if ChClass = 95/* _ */ begin /* A...F */
-          i := Ch - 55
-        else
-          i := 16 // break out of loop
-        end
-      end
-      if i < 16 begin
-        NextChar()
-        Len := Ch - 48
-        if Len > 9 begin
-          Len := Len - 7
-        end
-        Ch := (i << 4) + Len
+    while Ch = 39/* ' */ begin
+      NextChar()
+      while Ch <> 39/* ' */ begin
         StoreChar()
       end
+
+      // hexadecimal pair appended?
+      NextChar()
+      i := 0
+      while i < 16 begin
+        if ChClass = 94/* ^ */ begin /* 0...9 */
+          i := Ch - 48
+        else
+          if ChClass = 95/* _ */ begin /* A...F */
+            i := Ch - 55
+          else
+            i := 16 // break out of loop
+          end
+        end
+        if i < 16 begin
+          NextChar()
+          Len := Ch - 48
+          if Len > 9 begin
+            Len := Len - 7
+          end
+          Ch := (i << 4) + Len
+          StoreChar()
+        end
+      end
     end
+
     Token := tkAString
   else
     if ChClass = 94/* ^ */ begin /* 0...9 */

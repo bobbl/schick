@@ -9,7 +9,7 @@ begin
 end;
 
 begin
-  PosixWrite(1, 'Hello world'0D0A, ((10 + 3) * 2) >> 1);
+  PosixWrite(1, 'Hello'20'world'0D0A, ((10 + 3) * 2) >> 1);
   i : number := 0;
   while i < 5 begin
     if (i & 1) = 0 begin

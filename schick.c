@@ -867,29 +867,31 @@ static void get_token(void)
 
     token = ch_class;
     if (ch == 39) { /* string */
-        (void)next_char();
-        while (ch != 39) {
-            store_char();
-        }
-
-        /* hexadecimal appended? */
-        (void)next_char();
-        i = 0;
-        while (i < 16) {
-            if (ch_class == '^') { /* '0' ... '9' } */
-                i = ch - 48;
-            } else {
-                if (ch_class == '_') { /* 'A' ... 'F' */
-                    i = ch - 55;
-                } else {
-                    i = 16;
-                }
-            }
-            if (i < 16) {
-                len = next_char() - 48; /* '0' */
-                if (len > 9) { len = len - 7; }
-                ch = (i << 4) + len;
+        while (ch == 39) {
+            (void)next_char();
+            while (ch != 39) {
                 store_char();
+            }
+
+            /* hexadecimal appended? */
+            (void)next_char();
+            i = 0;
+            while (i < 16) {
+                if (ch_class == '^') { /* '0' ... '9' } */
+                    i = ch - 48;
+                } else {
+                    if (ch_class == '_') { /* 'A' ... 'F' */
+                        i = ch - 55;
+                    } else {
+                        i = 16;
+                    }
+                }
+                if (i < 16) {
+                    len = next_char() - 48; /* '0' */
+                    if (len > 9) { len = len - 7; }
+                    ch = (i << 4) + len;
+                    store_char();
+                }
             }
         }
         token = 1; /* 0x01 string */
@@ -1112,7 +1114,7 @@ static void expect_type(void)
 
 static void parse_factor(void);
 
-static void parse_expression(void)
+static void parse_operation(void)
 {
     parse_factor();
     while ((token & 240) == 64) {
@@ -1124,13 +1126,33 @@ static void parse_expression(void)
     }
 }
 
+static void parse_expression(void)
+{
+    parse_operation();
+    if ((token & 248) == 80) { /* (token & 0xF8) == 0x50 */
+        emit_push();
+        unsigned int op = token & 15;
+        get_token();
+        parse_operation();
+        emit_comp(op);
+    }
+}
+
 static unsigned int parse_condition(void)
 {
-    parse_expression();
+    unsigned int cond = 1;
+    parse_operation();
     emit_push();
-    unsigned int cond = token & 15;
-    get_token();
-    parse_expression();
+    if ((token & 248) == 80) { /* (token & 0xF8) == 0x50 */
+        cond = token & 15;
+        get_token();
+        parse_operation();
+    }
+
+    /* DIRTY: implicit "<> 0" to cover `|` and `&` on boolean expressions */
+    else {
+        emit_number(0);
+    }
     return emit_if(cond);
 }
 
