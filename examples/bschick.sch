@@ -46,7 +46,7 @@ tkComma                 = 44    // ','
 tkDot                   = 46    // '.'
 tkColon                 = 58    // ':'
 tkSemicolon             = 59    // ';'
-tkEqual                 = 61    // '='
+tkEqual                 = 80    // 'P' '='
 
 tkOpeningRoundBracket   = 40    // '('
 tkClosingRoundBracket   = 41    // ')'
@@ -364,12 +364,8 @@ begin
     end
     // otherwise fall back to stack
   end
-  Emit32(73763 +
-        (Global << 15) +
-        (RegPos << 20) +
-        ((Ofs & 1016   ) << 22) +       // bits 31..25 = ofs[9..3]
-        ((Ofs & 7      ) <<  9))        // bits 11..7  = ofs[2..0] 0 0
-    // SW REG[RegPos], (ofs+1)(REG[2+Global])
+  EmitISDO(Ofs << 2, Global, RegPos, 73731)
+    // LW REG[RegPos], Ofs(REG[2+Global])
   LastInsnType := itPushMem
 end
 
@@ -896,6 +892,7 @@ begin
   PosixWrite(2, ' in line ', 9)
   PrintNumber(LineNo);
   PosixWrite(2, '.'0D0A, 3)
+  PosixExit(ErrorNo)
 end
 
 procedure TokenCmp(Ident: []byte, Len: number) : boolean
@@ -1062,7 +1059,7 @@ begin
           //Token := 82/* R < */
           if Ch = 60/* < */ begin
             NextChar()
-            Token := 85/* A << */
+            Token := 65/* A << */
           else
             if Ch = 61/* = */ begin
               NextChar()
