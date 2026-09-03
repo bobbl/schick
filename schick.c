@@ -7,7 +7,7 @@ Error return codes
     0102 specific token expected
         0103 identifier expected
     0104 unknown identifier
-        0105 function redefined
+        0105 procedure redefined
     0106 type expected
     0110 `begin` of main routine  expected
     0111 statement expected
@@ -18,8 +18,8 @@ Symbol Type
 
     70 global constant (32 bit number)
     71 global variable
-    72 undefined function
-    73 defined function
+    72 undefined procedure
+    73 defined procedure
     74 local variable (or argument)
 
 Token
@@ -72,7 +72,7 @@ int write(int, char*, int);
  * x4        tp         (thread pointer)
  * x5 ... x7 t0 ... t2  expression stack
  * x8 ... x9 s0 ... s1  callee-saved local variables (including copy of parameters)
- * x10...x17 a0 ... a7  expression stack and function parameters
+ * x10...x17 a0 ... a7  expression stack and procedure parameters
  * x18...x27 s2 ...s11  callee-saved local variables (including copy of parameters)
  * x28...x31 t3 ... t6  expression stack
  *
@@ -83,7 +83,7 @@ int write(int, char*, int);
 unsigned int buf_size;          /* total size of the buffer */
 unsigned char *buf;             /* pointer to the buffer */
 unsigned int code_pos;          /* position in the buffer for code generation */
-unsigned int num_locals;        /* number of local variables in the current function */
+unsigned int num_locals;        /* number of local variables in the current procedure */
 unsigned int num_globals;       /* number of global variables */
 
 unsigned int reg_pos;
@@ -99,7 +99,7 @@ unsigned int last_insn_type;
     */
 unsigned int return_list;
 unsigned int max_locals;
-unsigned int function_start_pos;
+unsigned int procedure_start_pos;
 unsigned int last_branch_target;
     /* Position where the last branch points to.
        Used to determine the length of the last uninterrupted sequences of
@@ -397,7 +397,7 @@ unsigned int emit_pre_while()
 
 unsigned int emit_if(unsigned int condition)
 {
-    /* at function entry reg_pos is always 11 */
+    /* at procedure entry reg_pos is always 11 */
     unsigned int rs = 10;
     unsigned int rt = 11;
 
@@ -552,7 +552,7 @@ unsigned int emit_func_begin(unsigned int n)
 {
     unsigned int cp0 = code_pos;
     unsigned int cp8 = cp0 + 8;
-    function_start_pos = cp0;
+    procedure_start_pos = cp0;
     reg_pos = 10;
     max_reg_pos = 10;
     num_locals = n;
@@ -572,7 +572,7 @@ unsigned int emit_func_begin(unsigned int n)
 void emit_return()
 {
     emit32(return_list);
-        /* will be overwritten by a jump to the end of the function */
+        /* will be overwritten by a jump to the end of the procedure */
     return_list = code_pos - 4;
 }
 
@@ -580,15 +580,15 @@ void emit_func_end()
 {
     unsigned int m = max_locals;
 
-    /* Set stack reservation at start of function.
+    /* Set stack reservation at start of procedure.
        Stack pointer must be a multiple of 16.
        Shift by 20 is an optimisation to save the imm field shift */
     unsigned int stack_size = ((m + 4) >> 2) << 24;
-    set_32bit(buf + function_start_pos, 65811 - stack_size);
+    set_32bit(buf + procedure_start_pos, 65811 - stack_size);
         /* 00010113  ADD SP, SP, 0-stack_size */
 
     /* entry to prologue depends on number of local variables */
-    unsigned int entry = 100 - function_start_pos;
+    unsigned int entry = 100 - procedure_start_pos;
     if (m < 9) {
         entry = entry + 80 - (m << 3);
     } else if (m < 12) {
@@ -596,7 +596,7 @@ void emit_func_end()
     }
     entry = insn_jal(5, entry);
         /* J _prologue */
-    set_32bit(buf + function_start_pos + 4, entry);
+    set_32bit(buf + procedure_start_pos + 4, entry);
 
     /* go throught list of return statements */
     unsigned int cp = code_pos;
@@ -1039,7 +1039,7 @@ static void sym_fix(unsigned int sym, unsigned int func_pos)
     unsigned int next;
 
     if (s[4] != 72) {
-        error(105); /* Error: function redefined */
+        error(105); /* Error: procedure redefined */
     }
 
     while (i != 0) {
@@ -1177,7 +1177,7 @@ static void parse_call(unsigned int sym, unsigned int type, unsigned int ofs)
         set_32bit(buf + link, ofs); 
             /* overwrite the call to an undefined address with a link
                to the rest of the linked list of calls to this not yet
-               defined function */
+               defined procedure */
         set_32bit(buf + sym, link);
     }
 }
@@ -1255,6 +1255,7 @@ static void parse_scope(void)
     unsigned int s = emit_scope_begin();
     while (token != 5/*end*/) {
         parse_statement();
+        (void)accept(';');
     }
     get_token(); /* end */
     emit_scope_end(s);
@@ -1265,9 +1266,7 @@ static void parse_statement(void)
     unsigned int h;
     unsigned int s;
 
-    if (accept(';')) {
-        /* nothing to do */
-    } else if (accept(6/*if*/) != 0) {
+    if (accept(6/*if*/) != 0) {
         h = parse_condition();
         expect(4/*begin*/);
         s = emit_scope_begin();
@@ -1280,6 +1279,7 @@ static void parse_statement(void)
                 return;
             }
             parse_statement();
+            (void)accept(';');
         }
         get_token(); /* end */
         emit_scope_end(s);
@@ -1325,7 +1325,6 @@ static void parse_statement(void)
                 s = 1;
             }
             set_32bit(buf + syms_head, emit_local_var(s));
-            accept(';');
         }
         else {
             unsigned int type = buf[sym + 4];
@@ -1347,16 +1346,14 @@ static void parse_statement(void)
                 parse_expression();
                 emit_store(type & 1, ofs);
             }
-            else if (accept(':') != 0) {
+            else if (token == ':') {
                 /* Declaration of variable, but identifier is already used.
                    Therefore cover the old declaration temporarily.
                    Fake the token buffer for sym_append() */
                 token_buf = (char *)buf + sym + 6;
                 token_int = buf[sym + 5];
                 sym_append(emit_local_var(0), 74); /* local variable */
-                expect(':');
                 expect_type();
-                accept(';');
             }
             else {
                 error(111); /* Error: statement expected */
@@ -1372,7 +1369,7 @@ static void parse_procedure(void)
         get_token();
     }
     else {
-        sym_append(0, 72); /* undefined function */
+        sym_append(0, 72); /* undefined procedure */
         /* get_token(); implicit in sym_append() */
         sym = syms_head;
     }
@@ -1395,7 +1392,7 @@ static void parse_procedure(void)
         expect_type();
     }
 
-    if (accept(15/*#forward*/) == 0) {
+    if (accept(11/*#forward*/) == 0) {
         expect(4/*begin*/);
         sym_fix(sym, emit_func_begin(n));
         parse_scope();
@@ -1424,7 +1421,6 @@ static void parse_declaration(void)
                 set_32bit(buf + syms_head, token_int);
                 get_token();
             }
-            accept(';');
         }
         else if (accept(3/*procedure*/)) {
             parse_procedure();
