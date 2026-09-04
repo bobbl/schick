@@ -4,8 +4,9 @@
 help () {
     echo "Usage: $0 <task> ..."
     echo
-    echo "  test_hello    Build bootstrap Schick compiler from C and run hello.sch"
-    echo "  test_punycc   Use PunyCC to build boottrap Schick compiler"
+    echo "  test_hello      Build bootstrap Schick compiler from C and run hello.sch"
+    echo "  test_bootstrap  Compare Bootstrap Schick implementations in C and Schick" 
+    echo "  test_punycc     Use PunyCC to build boottrap Schick compiler"
     echo "  run <file>    Compile Schick file and execute it"
     echo
     echo "Environment variables:"
@@ -23,7 +24,50 @@ fi
 # paths to external tools
 CC=${CC:-gcc}
 QEMU_RV32=${QEMU_RV32:-qemu-riscv32}
+OBJDUMP_RV32=${OBJDUMP_RV32:-riscv64-linux-gnu-objdump}
 
+
+# build all compilers from scratch: c, bootstrap and nightly
+build_compiler () {
+    mkdir -p build
+    cd build
+    "$CC" -o cschick.x ../schick.c
+
+    ./cschick.x < ../examples/bschick.sch > bschick.rv32
+    chmod +x bschick.rv32
+
+    "$QEMU_RV32" ./bschick.rv32 < ../examples/nschick.sch > nschick.rv32
+    chmod +x nschick.rv32
+
+    cd ..
+}
+
+
+# Compare 
+test_bootstrap () {
+    mkdir -p build
+    cd build
+    rm -f cschick.x bschick.rv32 tschick.rv32
+
+    echo "Use $CC to compile C Schick"
+    "$CC" -o cschick.x ../schick.c
+
+    echo "Use C Schick to compile Bootstrap Schick"
+    ./cschick.x < ../examples/bschick.sch > bschick.rv32 || exit
+    chmod +x bschick.rv32
+
+    echo "Use Bootstrap Schick to compile Bootstrap Schick"
+    "$QEMU_RV32" ./bschick.rv32 < ../examples/bschick.sch > tschick.rv32
+    chmod +x tschick.rv32
+
+    echo "Compare"
+    #od -Ax -tx1 -v bschick.rv32 > tmp.b.hex
+    "$OBJDUMP_RV32" -b binary -m riscv -D bschick.rv32 | tail -n +3 > b.disasm
+    "$OBJDUMP_RV32" -b binary -m riscv -D tschick.rv32 | tail -n +3 > t.disasm
+    diff b.disasm t.disasm
+
+    cd ..
+}
 
 
 # Compile and run a Schick file with the compiler written in C
@@ -72,7 +116,13 @@ test_punycc () {
 while [ $# -ne 0 ]
 do
     case $1 in
-        help|-h)        help ;;
+        help|-h)
+            help
+            ;;
+
+        test_bootstrap)
+            test_bootstrap
+            ;;
 
         test_hello)
             run examples/hello.sch
@@ -80,6 +130,10 @@ do
 
         test_punycc)
             test_punycc
+            ;;
+
+        build_compiler)
+            build_compiler
             ;;
 
         run)

@@ -12,6 +12,7 @@ Error return codes
     0110 `begin` of main routine  expected
     0111 statement expected
     0112 number expected (in constant declaration)
+    0114 compare operation expected
     0199 expression expected
 
 Symbol Type
@@ -25,15 +26,15 @@ Symbol Type
 Token
     operations    conditions    other    reserved words predefined identifiers
                   50h 'P' =     28h (    03h procedure  0Dh number
-    41h 'A' <<    51h 'Q' <>    29h )    04h begin      0Eh char
-    42h 'B' >>    52h 'R' <     2Ch ,    05h end        0Fh string
-    43h 'C' -     53h 'S' >=    3Ah :    06h if         10h byte
-    44h 'D' |     54h 'T' >     3Bh ;    07h else       11h boolean
-    45h 'E' ^     55h 'U' <=             08h while      12h false
-    46h 'F' +                   5Bh [    09h return     13h true
+    41h 'A' <<    51h 'Q' <>    29h )    04h begin      0Eh string
+    42h 'B' >>    52h 'R' <     2Ch ,    05h end
+    43h 'C' -     53h 'S' >=    3Ah :    06h if
+    44h 'D' |     54h 'T' >     3Bh ;    07h else
+    45h 'E' ^     55h 'U' <=             08h while
+    46h 'F' +                   5Bh [    09h return
     47h 'G' &                   5Dh ]    0Ah #asm
     48h 'H' *     61h 'a' :=             0Bh #forward
-    49h 'I' /     62h 'b' ->             0Ch var
+    49h 'I' /                            0Ch byte
     4Ah 'J' %     63h 'c' ..
 
     special
@@ -316,6 +317,7 @@ void emit_operation(unsigned int operation)
     emit_irdo(imm, reg_pos, op);
 }
 
+/* unused */
 void emit_comp(unsigned int condition)
 {
     reg_pos = reg_pos - 1;
@@ -911,7 +913,7 @@ static void get_token(void)
         token_buf[token_int] = 0;
 
         /* search keyword */
-        const char *keywords = "9procedure5begin3end2if4else5while6return4#asm8#forward3var6number4char6string4byte7boolean5false4true0";
+        const char *keywords = "9procedure5begin3end2if4else5while6return4#asm8#forward4byte6number6string0";
         i = 0;
         len = 9;
         token = 3;
@@ -966,13 +968,6 @@ static void get_token(void)
         }
         /* token = ':' 0x3A */
     }
-    else if (ch == '-') {
-        if (next_char() == '>') {
-            (void)next_char();
-            token = 'b'; /* pointer */
-        }
-        /* token = 'C' - */
-    }
     else if (ch == '.') {
         if (next_char() == '.') {
             (void)next_char();
@@ -981,7 +976,7 @@ static void get_token(void)
         /* token = '.' 0x2E */
     }
     else {
-        /* case for ()+,;=[] */
+        /* case for ()+,-;=[] */
         (void)next_char();
     }
 }
@@ -1077,44 +1072,18 @@ static void expect(unsigned int t)
     }
 }
 
-static unsigned int accept_type(void)
-{
-    /* accept any combination of [ ] -> followed by a type identifier */
-    while (1) {
-        if (token == 'b'/* -> */) {
-            get_token();
-        }
-        if (token == 91/* [ */) {
-            get_token();
-        }
-        else if (token == 93/* ] */) {
-            get_token();
-        }
-        else if ((token - 13) <= 4) {
-            /* 13 number
-               14 char
-               15 string
-               16 byte
-               17 boolean */
-            get_token();
-            return 1;
-        }
-        else {
-            return 0;
-        }
-    }
-}
-
 static void expect_type(void)
 {
-    if (accept_type() == 0) {
-        error(106); /* Error: type expected */
+    if (accept('[')) {
+        expect(']');
+        expect(12/*byte*/);
     }
+    else expect(13/*number*/);
 }
 
 static void parse_factor(void);
 
-static void parse_operation(void)
+static void parse_expression(void)
 {
     parse_factor();
     while ((token & 240) == 64) {
@@ -1126,33 +1095,16 @@ static void parse_operation(void)
     }
 }
 
-static void parse_expression(void)
-{
-    parse_operation();
-    if ((token & 248) == 80) { /* (token & 0xF8) == 0x50 */
-        emit_push();
-        unsigned int op = token & 15;
-        get_token();
-        parse_operation();
-        emit_comp(op);
-    }
-}
-
 static unsigned int parse_condition(void)
 {
-    unsigned int cond = 1;
-    parse_operation();
+    parse_expression();
     emit_push();
-    if ((token & 248) == 80) { /* (token & 0xF8) == 0x50 */
-        cond = token & 15;
-        get_token();
-        parse_operation();
+    if ((token & 248) != 80) { /* (token & 0xF8) != 0x50 */
+        error(114); /* Error: Compare operation expected */
     }
-
-    /* DIRTY: implicit "<> 0" to cover `|` and `&` on boolean expressions */
-    else {
-        emit_number(0);
-    }
+    unsigned int cond = token & 15;
+    get_token();
+    parse_expression();
     return emit_if(cond);
 }
 
@@ -1203,14 +1155,6 @@ static void parse_factor(void)
         set_32bit((unsigned char *)token_buf + token_int, 0);
             /* append 4 zero bytes to simplify alignment in the backends */
         emit_string(token_int, token_buf);
-        get_token();
-    }
-    else if (token == 18/*false*/) {
-        emit_number(0);
-        get_token();
-    }
-    else if (token == 19/*true*/) {
-        emit_number(1);
         get_token();
     }
     else { /* identifier */
@@ -1302,7 +1246,7 @@ static void parse_statement(void)
     else if (accept(10/*#asm*/)) {
         while (token != 5/*end*/) {
             expect('.');
-            expect(15/*"string"*/);
+            expect(14/*"string"*/);
             emit_binary_func(token_int, token_buf);
             expect(1/*a string constant*/);
         }
