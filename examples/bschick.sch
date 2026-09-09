@@ -839,7 +839,7 @@ begin
       DigitBuf16[i] := (x % 10) + 48 // +'0'
       x := x / 10
     end
-    PosixWrite(2, DigitBuf16[i .. ], 16 - i)
+    PosixWrite(2, DigitBuf16[i ..], 16 - i)
   end
 end
 
@@ -908,7 +908,7 @@ begin
     Error(erBufferOverflow)
   end
   TokenSize := TokenSize - 512
-  TokenBuf  := Buf[CodePos + 256 .. ]
+  TokenBuf  := Buf[CodePos + 256 ..]
   TokenInt  := 0
   Token     := 0
 
@@ -998,7 +998,7 @@ begin
         Keywords : []byte
         Keywords := '9procedure5begin3end2if4else5while6return4#asm8#forward4byte6number6string0'
         i := 0
-        Len := 9
+        Len := 9 // same as first char in Keywords
         Token := 3
         while Len <> 0 begin
           if Len = TokenInt begin
@@ -1486,7 +1486,7 @@ begin
   LineNo        := 1
   CodePos       := 0
 
-  DigitBuf16    := Buf[BufSize .. ]
+  DigitBuf16    := Buf[BufSize ..]
 
   NextChar()
   GetToken()
