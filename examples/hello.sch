@@ -1,6 +1,6 @@
 module Hello;
 
-procedure PosixWrite(FileDesc: number, Buf: string, Len: number)
+procedure PosixWrite(FileDesc: number, Buf: []byte, Len: number)
 begin
   #asm
     .string ''93080004  /* li a7, 64 # sys_write        */

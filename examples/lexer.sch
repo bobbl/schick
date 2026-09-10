@@ -25,7 +25,7 @@ begin
   end
 end
 
-procedure BrkAlloc(Size: number) : string
+procedure BrkAlloc(Size: number) : []byte
 begin
   #asm
     .string ''130141FF  /*    add sp, sp, -12                   */

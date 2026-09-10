@@ -7,7 +7,10 @@ help () {
     echo "  test_hello      Build bootstrap Schick compiler from C and run hello.sch"
     echo "  test_bootstrap  Compare Bootstrap Schick implementations in C and Schick" 
     echo "  test_punycc     Use PunyCC to build boottrap Schick compiler"
-    echo "  run <file>    Compile Schick file and execute it"
+    echo
+    echo "  build_compiler  Build all compilers from scratch"
+    echo "  nightly         Build the nightly compiler"
+    echo "  run <file>      Compile Schick file and execute it (using Nighly Schick)"
     echo
     echo "Environment variables:"
     echo "  CC=           native C compiler (gcc or clang)"
@@ -57,7 +60,7 @@ test_bootstrap () {
     chmod +x bschick.rv32
 
     echo "Use Bootstrap Schick to compile Bootstrap Schick"
-    "$QEMU_RV32" ./bschick.rv32 < ../examples/bschick.sch > tschick.rv32
+    "$QEMU_RV32" ./bschick.rv32 < ../examples/bschick.sch > tschick.rv32 || exit
     chmod +x tschick.rv32
 
     echo "Compare"
@@ -70,18 +73,16 @@ test_bootstrap () {
 }
 
 
-# Compile and run a Schick file with the compiler written in C
+# Compile and run a Schick file with the nightly compiler
 # $1 Schick source file name
 run () {
-    mkdir -p build
-    cd build
-    "$CC" -o schick.c.x ../schick.c
-    cd ..
-
     elf=build/$(basename "$1" .sch).rv32
-    ./build/schick.c.x < "$1" > "$elf"
-    chmod +x "$elf"
-    "$QEMU_RV32" "$elf"
+    "$QEMU_RV32" ./build/nschick.rv32 < "$1" > "$elf"
+    if [ $? -eq 0 ]
+    then
+        chmod +x "$elf"
+        "$QEMU_RV32" "$elf"
+    fi
 }
 
 
@@ -107,7 +108,7 @@ test_punycc () {
     echo Bootstrap Schick compiler size: $(wc -c < schick.punycc.rv32)
 
     chmod +x schick.punycc.rv32
-    "$QEMU_RV32" schick.punycc.rv32 < ../hello.sch > hello.punycc.rv32
+    "$QEMU_RV32" schick.punycc.rv32 < ../examples/hello.sch > hello.punycc.rv32
     chmod +x hello.punycc.rv32
     "$QEMU_RV32" hello.punycc.rv32
 }
@@ -134,6 +135,13 @@ do
 
         build_compiler)
             build_compiler
+            ;;
+
+        nightly)
+            cd build
+            "$QEMU_RV32" ./bschick.rv32 < ../examples/nschick.sch > nschick.rv32
+            chmod +x nschick.rv32
+            cd ..
             ;;
 
         run)

@@ -11,7 +11,7 @@ Error return codes
     0106 type expected
     0110 `begin` of main routine  expected
     0111 statement expected
-    0112 number expected (in constant declaration)
+    0112 constant value expected
     0114 compare operation expected
     0199 expression expected
 
@@ -73,10 +73,21 @@ int write(int, char*, int);
  * x4        tp         (thread pointer)
  * x5 ... x7 t0 ... t2  expression stack
  * x8 ... x9 s0 ... s1  callee-saved local variables (including copy of parameters)
- * x10...x17 a0 ... a7  expression stack and procedure parameters
+ * x10...x17 a0 ... a7  expression stack and function parameters
  * x18...x27 s2 ...s11  callee-saved local variables (including copy of parameters)
  * x28...x31 t3 ... t6  expression stack
  *
+ * Memory map
+ * ----------
+ * 0x00010000 ELF header
+ * 0x00010054 program entry point: call to main()
+ * 0x00010068 function prologue/epilogue
+ * 0x000100FC standard library functions
+ *            compiled code
+ * GP-0x0800  global variables
+ * <GP+0x07FC end of ELF segment
+ * ...
+ * 0x7FFFFFC  end of stack
  **********************************************************************/
 
 
@@ -84,7 +95,7 @@ int write(int, char*, int);
 unsigned int buf_size;          /* total size of the buffer */
 unsigned char *buf;             /* pointer to the buffer */
 unsigned int code_pos;          /* position in the buffer for code generation */
-unsigned int num_locals;        /* number of local variables in the current procedure */
+unsigned int num_locals;        /* number of local variables in the current function */
 unsigned int num_globals;       /* number of global variables */
 
 unsigned int reg_pos;
@@ -100,7 +111,7 @@ unsigned int last_insn_type;
     */
 unsigned int return_list;
 unsigned int max_locals;
-unsigned int procedure_start_pos;
+unsigned int function_start_pos;
 unsigned int last_branch_target;
     /* Position where the last branch points to.
        Used to determine the length of the last uninterrupted sequences of
@@ -204,14 +215,15 @@ void emit_string(unsigned int len, char *s)
     emit_binary_func(aligned_len, s);
 }
 
-void emit_store(unsigned int global, unsigned int ofs)
+void emit_store(unsigned int sym_type, unsigned int ofs)
 {
     /* When called from punycc.c, reg_pos is always 10.
        But it is called from emit_pre_call() (via emit_local_var())
        to save the parameter stack. In the latter case, reg_pos
        can be higher. */
 
-    if (global == 0) {
+    if (sym_type == 74) {
+        /* local variable */
         if (ofs < 13) {
             if (last_insn_type > 7) {
                 code_pos = code_pos - 4;
@@ -227,16 +239,25 @@ void emit_store(unsigned int global, unsigned int ofs)
         /* more than 13 local vars: fall back to stack */
     }
     emit32(73763 +
-        (global << 15) +
+        ((sym_type & 1) << 15) +
         (reg_pos << 20) +
         ((ofs & 1016   ) << 22) +       /* bits 31..25 = ofs[9..3] */
         ((ofs & 7      ) <<  9));       /* bits 11..7  = ofs[2..0] 0 0  */
         /* SW REG[reg_pos], (ofs+1)(REG[2+global]) */
 }
 
-void emit_load(unsigned int global, unsigned int ofs)
+void emit_load(unsigned int sym_type, unsigned int ofs)
 {
-    if (global == 0) {
+
+    /*** added for Schick BEGIN ***/
+    if (sym_type == 70) {
+        /* global constant */
+        emit_number(ofs);
+        return;
+    }
+    /*** added for Schick END ***/
+
+    if (sym_type == 74) {
         if (ofs < 13) {
             emit_isdo(0, local_reg[ofs], reg_pos, 19);
                 /* ADDI REG[reg_pos], REG[local_reg[ofs]], 0 */
@@ -245,7 +266,7 @@ void emit_load(unsigned int global, unsigned int ofs)
         }
         /* more than 13 local vars: fall back to stack */
     }
-    emit_isdo(ofs << 2, global, reg_pos, 73731);
+    emit_isdo(ofs << 2, sym_type & 1, reg_pos, 73731);
         /* LW reg_pos, ofs(REG[2+global]) */
     last_insn_type = 13; /* push mem */
 }
@@ -351,13 +372,13 @@ void emit_comp(unsigned int condition)
                 /* xori REG, REG, 1         >= or <= */
         }
     }
-    last_insn_type = 13; /* arith comparison */
+    last_insn_type = 15; /* arith comparison */
 }
 
-void emit_index_push(unsigned int global, unsigned int ofs)
+void emit_index_push(unsigned int sym_type, unsigned int ofs)
 {
     emit_push();
-    emit_load(global, ofs);
+    emit_load(sym_type, ofs);
     emit_operation(6); /* add */
     emit_push();
     last_insn_type = 14; /* arith operation */
@@ -371,21 +392,25 @@ void emit_pop_store_array()
         /* 00B50023  SB A1,0(A0) */
 }
 
-void emit_index_load_array(unsigned int global, unsigned int ofs)
+void emit_index_load_array(unsigned int sym_type, unsigned int ofs)
 {
     unsigned int imm = 0;
     unsigned int rs = reg_pos;
     if (last_insn_type == 8) { /* push imm12 */
         imm = last_insn >> 20;
         code_pos = code_pos - 4;
-        rs = local_reg[ofs];
-        if ((global != 0) | (ofs >= 13)) {
-            emit_load(global, ofs);
-            rs = reg_pos;
+        emit_load(sym_type, ofs);
+
+        /* the first 13 local vars are in registers */
+        if (sym_type == 74) {
+            if (ofs < 13) {
+                code_pos = code_pos - 4;
+                rs = local_reg[ofs];
+            }
         }
     }
     else {
-        emit_index_push(global, ofs);
+        emit_index_push(sym_type, ofs);
         reg_pos = reg_pos - 1;
     }
     emit_isdo(imm, rs, reg_pos, 16387);
@@ -399,7 +424,7 @@ unsigned int emit_pre_while()
 
 unsigned int emit_if(unsigned int condition)
 {
-    /* at procedure entry reg_pos is always 11 */
+    /* at function entry reg_pos is always 11 */
     unsigned int rs = 10;
     unsigned int rt = 11;
 
@@ -489,7 +514,7 @@ unsigned int emit_local_var(unsigned int init)
     if (n > max_locals) max_locals = n;
 
     if (init != 0) {                                 /* set initial value */
-        emit_store(0, n);
+        emit_store(74, n);
     }
 
     return n;
@@ -534,7 +559,7 @@ unsigned int emit_call(unsigned int ofs, unsigned int pop, unsigned int save)
 
         reg_pos = 10;
         while (reg_pos < save) {
-            emit_load(0, num_locals);
+            emit_load(74/*local var*/, num_locals);
             reg_pos = reg_pos + 1;
             num_locals = num_locals - 1;
         }
@@ -554,7 +579,7 @@ unsigned int emit_func_begin(unsigned int n)
 {
     unsigned int cp0 = code_pos;
     unsigned int cp8 = cp0 + 8;
-    procedure_start_pos = cp0;
+    function_start_pos = cp0;
     reg_pos = 10;
     max_reg_pos = 10;
     num_locals = n;
@@ -574,7 +599,7 @@ unsigned int emit_func_begin(unsigned int n)
 void emit_return()
 {
     emit32(return_list);
-        /* will be overwritten by a jump to the end of the procedure */
+        /* will be overwritten by a jump to the end of the function */
     return_list = code_pos - 4;
 }
 
@@ -582,15 +607,15 @@ void emit_func_end()
 {
     unsigned int m = max_locals;
 
-    /* Set stack reservation at start of procedure.
+    /* Set stack reservation at start of function.
        Stack pointer must be a multiple of 16.
        Shift by 20 is an optimisation to save the imm field shift */
     unsigned int stack_size = ((m + 4) >> 2) << 24;
-    set_32bit(buf + procedure_start_pos, 65811 - stack_size);
+    set_32bit(buf + function_start_pos, 65811 - stack_size);
         /* 00010113  ADD SP, SP, 0-stack_size */
 
     /* entry to prologue depends on number of local variables */
-    unsigned int entry = 100 - procedure_start_pos;
+    unsigned int entry = 100 - function_start_pos;
     if (m < 9) {
         entry = entry + 80 - (m << 3);
     } else if (m < 12) {
@@ -598,7 +623,7 @@ void emit_func_end()
     }
     entry = insn_jal(5, entry);
         /* J _prologue */
-    set_32bit(buf + procedure_start_pos + 4, entry);
+    set_32bit(buf + function_start_pos + 4, entry);
 
     /* go throught list of return statements */
     unsigned int cp = code_pos;
@@ -1175,19 +1200,19 @@ static void parse_factor(void)
             if (accept('c'/*...*/)) {
                 expect(']');
                 emit_push();
-                emit_load(type & 1, ofs);
+                emit_load(type, ofs);
                 emit_operation(6); /* add */
             }
             else {
                 expect(']');
-                emit_index_load_array(type & 1, ofs);
+                emit_index_load_array(type, ofs);
             }
         }
         else if (type == 70) { /* global constant */
             emit_number(ofs);
         }
         else { /* variable */
-            emit_load(type & 1, ofs);
+            emit_load(type, ofs);
         }
     }
 }
@@ -1282,13 +1307,13 @@ static void parse_statement(void)
                 parse_expression();
                 expect(']');
                 expect('a'/*:=*/);
-                emit_index_push(type & 1, ofs);
+                emit_index_push(type, ofs);
                 parse_expression();
                 emit_pop_store_array();
             }
             else if (accept('a'/*:=*/) != 0) { /* assignment to variable */
                 parse_expression();
-                emit_store(type & 1, ofs);
+                emit_store(type, ofs);
             }
             else if (token == ':') {
                 /* Declaration of variable, but identifier is already used.
@@ -1358,12 +1383,24 @@ static void parse_declaration(void)
                 expect_type();
             }
             if (accept('P'/* = */)) {
-                if (token != 94/*a number*/) {
-                    error(112); /* Error: number expected for constant */
+                if (token == 94/*a number*/) {
+                    buf[syms_head + 4] = 70/*global constant*/;
+                    set_32bit(buf + syms_head, token_int);
+                    get_token();
                 }
-                buf[syms_head + 4] = 70/*global constant*/;
-                set_32bit(buf + syms_head, token_int);
-                get_token();
+                else if (token == 1/*a string*/) {
+                    unsigned int addr = emit_binary_func(token_int, token_buf);
+                    unsigned int align = token_int & 3;
+                    emit_binary_func(4 - align, "\x00\x00\x00");
+                    buf[syms_head + 4] = 70/*global constant*/;
+                    set_32bit(buf + syms_head, addr + 65536/*0x00010000*/);
+                        /* caution: absolute address
+                           Base address  must be the same as in the ELF header */
+                    get_token();
+                }
+                else {
+                    error(112); /* Error: constant value expected */
+                }
             }
         }
         else if (accept(3/*procedure*/)) {

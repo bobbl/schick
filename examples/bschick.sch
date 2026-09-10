@@ -1,5 +1,7 @@
 module Emit
 
+BaseAddr                = 65536 // 0001'0000hex base address from ELF header
+
 
 // error codes
 erBufferOverflow        = 100
@@ -55,6 +57,7 @@ tyGlobalVariable        = 71
 tyUndefinedProcedure    = 72
 tyDefinedProcedure      = 73
 tyLocalVariable         = 74    // or procedure parameter
+
 
 
 
@@ -311,9 +314,9 @@ begin
   EmitBinaryFunc(AlignedLen - Len, ''00000000)
 end
 
-procedure EmitStore(Global: number, Ofs: number)
+procedure EmitStore(SymType: number, Ofs: number)
 begin
-  if Global = 0 begin
+  if SymType = tyLocalVariable begin
     if Ofs < 13 begin
       // max 13 local variables in registers
       if LastInsnType > 7 begin
@@ -329,16 +332,21 @@ begin
     // otherwise fall back to stack
   end
   Emit32(73763 +
-        (Global << 15) +
+        ((SymType & 1) << 15) +
         (RegPos << 20) +
         ((Ofs & 1016   ) << 22) +       // bits 31..25 = ofs[9..3]
         ((Ofs & 7      ) <<  9))        // bits 11..7  = ofs[2..0] 0 0
     // SW REG[RegPos], (ofs+1)(REG[2+Global])
 end
 
-procedure EmitLoad(Global: number, Ofs: number)
+procedure EmitLoad(SymType: number, Ofs: number)
 begin
-  if Global = 0 begin
+  if SymType = tyGlobalConstant begin
+    EmitNumber(Ofs)
+    return;
+  end
+
+  if SymType = tyLocalVariable begin
     if Ofs < 13 begin
       // max 13 local variables in registers
       EmitISDO(0, LocalReg[Ofs], RegPos, 19)
@@ -348,7 +356,7 @@ begin
     end
     // otherwise fall back to stack
   end
-  EmitISDO(Ofs << 2, Global, RegPos, 73731)
+  EmitISDO(Ofs << 2, SymType & 1, RegPos, 73731)
     // LW REG[RegPos], Ofs(REG[2+Global])
   LastInsnType := itPushMem
 end
@@ -417,10 +425,10 @@ begin
   EmitIRDO(Imm, RegPos, Op);
 end
 
-procedure EmitIndexPush(Global: number, Ofs: number)
+procedure EmitIndexPush(SymType: number, Ofs: number)
 begin
   EmitPush()
-  EmitLoad(Global, Ofs)
+  EmitLoad(SymType, Ofs)
   EmitOperation(opAdd)
   EmitPush()
   LastInsnType := itArithOp
@@ -434,7 +442,7 @@ begin
     // 00B50023  SB A1,0(A0)
 end
 
-procedure EmitIndexLoadArray(Global: number, Ofs: number)
+procedure EmitIndexLoadArray(SymType: number, Ofs: number)
 begin
   Imm : number := 0
   Rs  : number := RegPos
@@ -444,18 +452,18 @@ begin
     Rs := LocalReg[Ofs]
 
     // dublicate code because there is no logical or
-    if Global <> 0 begin
-      EmitLoad(Global, Ofs)
+    if SymType <> tyLocalVariable begin
+      EmitLoad(SymType, Ofs)
       Rs := RegPos
-    else 
+    else
       if Ofs >= 13 begin
-        EmitLoad(Global, Ofs)
+        EmitLoad(SymType, Ofs)
         Rs := RegPos
       end
     end
 
   else
-    EmitIndexPush(Global, Ofs)
+    EmitIndexPush(SymType, Ofs)
     RegPos := RegPos - 1
   end
   EmitISDO(Imm, Rs, RegPos, 16387)
@@ -554,7 +562,7 @@ begin
     MaxLocals := n
   end
   if Init <> 0 begin // set initial value
-    EmitStore(0, n)
+    EmitStore(tyLocalVariable, n)
   end
   return n
 end
@@ -598,7 +606,7 @@ begin
 
     RegPos := 10
     while RegPos < Save begin
-      EmitLoad(0, NumLocals)
+      EmitLoad(tyLocalVariable, NumLocals)
       RegPos := RegPos + 1
       NumLocals := NumLocals - 1
     end
@@ -843,9 +851,13 @@ begin
   end
 end
 
+
+
+msgError = 'Error '
+
 procedure Error(ErrorNo: number)
 begin
-  PosixWrite(2, 'Error ', 6)
+  PosixWrite(2, msgError, 6)
   PrintNumber(ErrorNo);
   PosixWrite(2, ' in line ', 9)
   PrintNumber(LineNo);
@@ -998,7 +1010,7 @@ begin
         Keywords : []byte
         Keywords := '9procedure5begin3end2if4else5while6return4#asm8#forward4byte6number6string0'
         i := 0
-        Len := 9 // same as first char in Keywords
+        Len := Keywords[0] - 48
         Token := 3
         while Len <> 0 begin
           if Len = TokenInt begin
@@ -1255,11 +1267,11 @@ begin
     if Accept(tkDots) <> 0 begin // '..'
       Expect(tkClosingSquareBracket)
       EmitPush()
-      EmitLoad(Type & 1, Ofs)
+      EmitLoad(Type, Ofs)
       EmitOperation(opAdd)
     else
       Expect(tkClosingSquareBracket)
-      EmitIndexLoadArray(Type & 1, Ofs)
+      EmitIndexLoadArray(Type, Ofs)
     end
     return;
   end
@@ -1267,7 +1279,7 @@ begin
   if Type = tyGlobalConstant begin // constant
     EmitNumber(Ofs)
   else // variable
-    EmitLoad(Type & 1, Ofs)
+    EmitLoad(Type, Ofs)
   end
 end
 
@@ -1378,7 +1390,7 @@ begin
     ParseExpression()
     Expect(tkClosingSquareBracket)
     Expect(tkAssign)
-    EmitIndexPush(Type & 1, Ofs)
+    EmitIndexPush(Type, Ofs)
     ParseExpression()
     EmitPopStoreArray()
     return;
@@ -1387,7 +1399,7 @@ begin
   // assignmnet to variable
   if Accept(tkAssign) <> 0 begin
     ParseExpression()
-    EmitStore(Type & 1, Ofs)
+    EmitStore(Type, Ofs)
     return;
   end
 
@@ -1455,12 +1467,22 @@ begin
         ExpectType()
       end
       if Accept(tkEqual) <> 0 begin
-        if Token <> tkNumericLiteral begin
-          Error(erNumberExpected)
+        if Token = tkNumericLiteral begin
+          Buf[SymsHead + 4] := tyGlobalConstant
+          SetBuf32(SymsHead, TokenInt)
+          GetToken()
+        else
+          if Token = tkStringLiteral begin
+            Addr  : number := EmitBinaryFunc(TokenInt, TokenBuf)
+            Align : number := TokenInt & 3
+            EmitBinaryFunc(4 - Align, ''00000000)
+            Buf[SymsHead + 4] := tyGlobalConstant
+            SetBuf32(SymsHead, Addr + BaseAddr)
+            GetToken()
+          else
+            Error(erNumberExpected)
+          end
         end
-        Buf[SymsHead + 4] := tyGlobalConstant
-        SetBuf32(SymsHead, TokenInt)
-        GetToken()
       end
     else
       if Accept(tkProcedure) <> 0 begin

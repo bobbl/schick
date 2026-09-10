@@ -27,14 +27,16 @@ The Syntax of Bootstrap Schick in Extended Backus-Naur Form (ENBF):
 
     ArithOp     = "+" | "-" | "*" | "/" | "%" | "&" | "|" | "^" | "<<" | ">>" .
     CompareOp   = "=" | "<>" | "<" | ">" | "<=" | ">=" .
-    Type        = "number" | "[" "]" "byte" .
+    Array       = "[" "]" "byte" .
+    Type        = "number" | Array .
+    
 
     Expression  = Factor { ArithOp Factor } .
     ExprList    = Expression { "," Expression } .
     Call        = Identifier "(" [ ExprList ] ") .
     Symbol      = Identifier [ "[" Expression [ ".." ] ] .
     Brackets    = "(" Expression ")" .
-    Factor      = Num | Str | Call | Symbol | Brackets.
+    Factor      = Num | Str | Call | Symbol | Brackets .
 
     Condition   = Expression CompareOp Expression .
     If          = "if" Condition "begin" Sequence [ "else" Sequence ] "end" .
@@ -47,12 +49,13 @@ The Syntax of Bootstrap Schick in Extended Backus-Naur Form (ENBF):
     Assignment  = Identifier [ "[" Expression "]" ] ":=" Expression .
     Statement   = If | While | Return | Asm | LocalVar | Call | Assignment .
 
-    Sequence    = { Statement [ ";" ] }
+    Sequence    = { Statement [ ";" ] } .
     BasicBlock  = "begin" Sequence "end" .
-    Body        = BasicBlock | "#forward
+    Body        = BasicBlock | "#forward .
     ParamList   = Variable { "," Variable } .
     Procedure   = "procedure" Identifier "(" [ ParamList ] ")" [ ":" Type ] [ ";" ] Body .
-    Constant    = Identifier [ ":" Type ] "=" Integer .
+    ConstLit    = Num | Str .
+    Constant    = Identifier [ ":" Type ] "=" ConstLit .
     Declaration = Constant | Variable | Procedure .
     Module      = "module" Identifier [ ";" ] { Declaration  [ ";" ] } BasicBlock "." .
 
