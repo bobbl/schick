@@ -1,5 +1,7 @@
 module Emit
 
+BaseAddr                = 65536 // 0001'0000hex base address from ELF header
+
 
 // error codes
 erBufferOverflow        = 100
@@ -14,7 +16,7 @@ erBeginExpected         = 110 // of main routine
 erStatementExpected     = 111
 erNumberExpected        = 112 // for constant declaration
 erBinaryStringExpected  = 113
-
+erCompareOpExpected     = 114
 
 
 // token from lexer
@@ -46,7 +48,16 @@ tkComma                 = 44    // ','
 tkDot                   = 46    // '.'
 tkColon                 = 58    // ':'
 tkSemicolon             = 59    // ';'
-tkEqual                 = 80    // 'P' '='
+tkShiftL                = 65
+tkShiftR                = 66    // 'B' >>
+tkMinus                 = 67    // 'C' -
+tkDiv                   = 73    // 'I' /
+tkEQ                    = 80    // 'P' =
+tkNE                    = 81    // 'Q' <>
+tkLT                    = 82    // 'R' <
+tkGE                    = 83    // 'S' >=
+tkGT                    = 84    // 'T' >
+tkLE                    = 85    // 'U' <=
 
 tkOpeningRoundBracket   = 40    // '('
 tkClosingRoundBracket   = 41    // ')'
@@ -59,12 +70,20 @@ tkAssign                = 97    // 'a' :=
 tkArrow                 = 98    // 'b' ->
 tkDots                  = 99    // 'c' ..
 
+// token class
+tcInvalidChar           = 32    // ' '
+tcWhitespace            = 35    // '#'    9,10,13,' ','/'
+tcDigit                 = 94    // '^'
+tcLetter                = 95    // '_'
+
+
 // symbol types
 tyGlobalConstant        = 70    // 32 bit number
 tyGlobalVariable        = 71
 tyUndefinedProcedure    = 72
 tyDefinedProcedure      = 73
 tyLocalVariable         = 74    // or procedure parameter
+
 
 
 
@@ -98,7 +117,7 @@ begin
   end
 end
 
-procedure BrkAlloc(Size: number) : string
+procedure BrkAlloc(Size: number) : []byte
 begin
   #asm
     .string ''130141FF  /*    add sp, sp, -12                   */
@@ -189,9 +208,6 @@ itArithOp       = 14
 itComparison    = 15
     // 8...15 write into the destination register
 
-
-
-//var
   BufSize       : number        // total size of the buffer
   Buf           : []byte        // the buffer for everything
   CodePos       : number        // position in the buffer for code generation
@@ -213,8 +229,6 @@ itComparison    = 15
   NumCalls      : number
   MaxRegPos     : number
   LocalReg      : []byte
-
-
 
 
 
@@ -327,9 +341,9 @@ begin
   EmitBinaryFunc(AlignedLen - Len, ''00000000)
 end
 
-procedure EmitStore(Global: number, Ofs: number)
+procedure EmitStore(SymType: number, Ofs: number)
 begin
-  if Global = 0 begin
+  if SymType = tyLocalVariable begin
     if Ofs < 13 begin
       // max 13 local variables in registers
       if LastInsnType > 7 begin
@@ -345,16 +359,21 @@ begin
     // otherwise fall back to stack
   end
   Emit32(73763 +
-        (Global << 15) +
+        ((SymType & 1) << 15) +
         (RegPos << 20) +
         ((Ofs & 1016   ) << 22) +       // bits 31..25 = ofs[9..3]
         ((Ofs & 7      ) <<  9))        // bits 11..7  = ofs[2..0] 0 0
     // SW REG[RegPos], (ofs+1)(REG[2+Global])
 end
 
-procedure EmitLoad(Global: number, Ofs: number)
+procedure EmitLoad(SymType: number, Ofs: number)
 begin
-  if Global = 0 begin
+  if SymType = tyGlobalConstant begin
+    EmitNumber(Ofs)
+    return;
+  end
+
+  if SymType = tyLocalVariable begin
     if Ofs < 13 begin
       // max 13 local variables in registers
       EmitISDO(0, LocalReg[Ofs], RegPos, 19)
@@ -364,7 +383,7 @@ begin
     end
     // otherwise fall back to stack
   end
-  EmitISDO(Ofs << 2, Global, RegPos, 73731)
+  EmitISDO(Ofs << 2, SymType & 1, RegPos, 73731)
     // LW REG[RegPos], Ofs(REG[2+Global])
   LastInsnType := itPushMem
 end
@@ -467,10 +486,10 @@ begin
   LastInsnType := itComparison
 end
 
-procedure EmitIndexPush(Global: number, Ofs: number)
+procedure EmitIndexPush(SymType: number, Ofs: number)
 begin
   EmitPush()
-  EmitLoad(Global, Ofs)
+  EmitLoad(SymType, Ofs)
   EmitOperation(opAdd)
   EmitPush()
   LastInsnType := itArithOp
@@ -484,7 +503,7 @@ begin
     // 00B50023  SB A1,0(A0)
 end
 
-procedure EmitIndexLoadArray(Global: number, Ofs: number)
+procedure EmitIndexLoadArray(SymType: number, Ofs: number)
 begin
   Imm : number := 0
   Rs  : number := RegPos
@@ -492,12 +511,20 @@ begin
     Imm := LastInsn >> 20
     CodePos := CodePos - 4
     Rs := LocalReg[Ofs]
-    if (Global <> 0) | (Ofs >= 13) begin
-      EmitLoad(Global, Ofs)
+
+    // dublicate code because there is no logical or
+    if SymType <> tyLocalVariable begin
+      EmitLoad(SymType, Ofs)
       Rs := RegPos
+    else
+      if Ofs >= 13 begin
+        EmitLoad(SymType, Ofs)
+        Rs := RegPos
+      end
     end
+
   else
-    EmitIndexPush(Global, Ofs)
+    EmitIndexPush(SymType, Ofs)
     RegPos := RegPos - 1
   end
   EmitISDO(Imm, Rs, RegPos, 16387)
@@ -596,7 +623,7 @@ begin
     MaxLocals := n
   end
   if Init <> 0 begin // set initial value
-    EmitStore(0, n)
+    EmitStore(tyLocalVariable, n)
   end
   return n
 end
@@ -640,7 +667,7 @@ begin
 
     RegPos := 10
     while RegPos < Save begin
-      EmitLoad(0, NumLocals)
+      EmitLoad(tyLocalVariable, NumLocals)
       RegPos := RegPos + 1
       NumLocals := NumLocals - 1
     end
@@ -856,10 +883,15 @@ end
  * Scanner
  **********************************************************************/
 
+LineBufSize     = 1024
+
 DigitBuf16      : []byte
 Ch              : number
 ChClass         : number
 LineNo          : number
+LineCol         : number
+LineLastCol     : number
+LineBuf         : []byte
 Token           : number
 TokenInt        : number
 TokenSize       : number
@@ -867,45 +899,27 @@ TokenBuf        : []byte
 SymsHead        : number
 
 
-procedure PrintNumber(n: number)
+procedure PrintNumber(n: number, Fill: number)
 begin
+  i : number
   if n = 0 begin
-    PosixWrite(2, '0', 1)
+    i := 15
+    DigitBuf16[15] := '0'
   else
     x : number
     x := n
-    i : number
     i := 16
     while x <> 0 begin
       i := i - 1
       DigitBuf16[i] := (x % 10) + 48 // +'0'
       x := x / 10
     end
-    PosixWrite(2, DigitBuf16[i .. ], 16 - i)
   end
-end
-
-procedure Error(ErrorNo: number)
-begin
-  PosixWrite(2, 'Error ', 6)
-  PrintNumber(ErrorNo);
-  PosixWrite(2, ' in line ', 9)
-  PrintNumber(LineNo);
-  PosixWrite(2, '.'0D0A, 3)
-  PosixExit(ErrorNo)
-end
-
-procedure TokenCmp(Ident: []byte, Len: number) : boolean
-begin
-  i : number
-  i := 0
-  while Ident[i] = TokenBuf[i] begin
-    i := i + 1
-    if i = Len begin
-      return true;
-    end
+  while 16 - i < Fill begin
+    i := i - 1
+    DigitBuf16[i] := 32 // ' '
   end
-  return false;
+  PosixWrite(2, DigitBuf16[i ..], 16 - i)
 end
 
 procedure NextChar()
@@ -913,7 +927,15 @@ begin
   Ch := PosixGetChar()
   if Ch = 10 begin
     LineNo := LineNo + 1
+    LineLastCol := LineCol // if faulty token is directly followed by a newline
+    LineCol := 0
+  else
+    if LineCol < LineBufSize begin
+      LineBuf[LineCol] := Ch
+    end
+    LineCol := LineCol + 1
   end
+
   ChClass := 32 /* ' ' */
   if Ch < 128 begin
     Classify : []byte
@@ -926,7 +948,105 @@ begin
          _ = letter or underscore
         */
     ChClass := Classify[Ch]
+
+/*
+         ##  #                  
+#  _ JG!()HF,C.#^^^^^^^^^^:;RPT 
+ __________________________[ ]E_
+ __________________________ D   
+*/
+
+
   end
+end
+
+procedure ErrorMsg(e: number)
+begin
+  if e=erBufferOverflow         begin PosixWrite(2, 'buffer overflow', 15) return; end
+  if e=erInvalidCharacter       begin PosixWrite(2, 'invalid character', 17) return; end
+  if e=erIdentifierExpected     begin PosixWrite(2, 'identifier expected', 19) return; end
+  if e=erUnknownIdentifier      begin PosixWrite(2, 'unknown identifier', 18) return; end
+  if e=erFunctionRedefined      begin PosixWrite(2, 'function rededined', 18) return; end
+  if e=erTypeExpected           begin PosixWrite(2, 'type expected', 13) return; end
+  if e=erBeginExpected          begin PosixWrite(2, 'begin expected', 14) return; end
+  if e=erStatementExpected      begin PosixWrite(2, 'statement expected', 18) return; end
+  if e=erNumberExpected         begin PosixWrite(2, 'number expected', 15) return; end
+  if e=erBinaryStringExpected   begin PosixWrite(2, 'binary string expected', 22) return; end
+
+  if e=213                      begin PosixWrite(2, '`number` expected', 19) return; end
+  if e=241                      begin PosixWrite(2, '`)` expected', 14) return; end
+
+  PrintNumber(e, 0)
+end
+
+procedure Error(ErrorNo: number)
+begin
+  if LineCol = 0 begin
+    // newline after last token => restore prevoíous line
+    LineCol := LineLastCol + 1
+    LineNo := LineNo - 1
+  end
+
+  ErrorCol : number := LineCol - 1
+  if Token = tkIdentifier begin
+    ErrorCol := ErrorCol - TokenInt
+  else
+    ErrorCol := ErrorCol - 1
+  end
+
+  PosixWrite(2, ''1B'[1;37m', 7) // white
+  PosixWrite(2, 'filename.sch', 12)
+  PosixWrite(2, ':', 1)
+  PrintNumber(LineNo, 0);
+  PosixWrite(2, ':', 1)
+  PrintNumber(LineCol, 0);
+  PosixWrite(2, ' '1B'[1;31merror: '1B'[0m', 19)
+  ErrorMsg(ErrorNo)
+  PosixWrite(2, ''0D0A, 2)
+
+  PrintNumber(LineNo, 5);
+  PosixWrite(2, ' | ', 3)
+
+
+  // read and print rest of line
+  LineLen : number := LineCol
+  while Ch <> 10 begin
+    LineLen := LineLen + 1
+    NextChar()
+    if Ch > 255 begin
+      Ch := 10
+    end
+  end
+  if LineLen > LineBufSize begin
+    LineLen := LineBufSize + 1
+  end
+  PosixWrite(2, LineBuf, LineLen - 1)
+
+  // point to column in line
+  PosixWrite(2, ''0D0A'      | ', 10)
+  i : number := 0
+  while i < ErrorCol begin
+    LineBuf[i] := 32 // ' '
+    i := i + 1
+  end
+  PosixWrite(2, LineBuf, ErrorCol)
+  PosixWrite(2, ''1B'[1;32m^'1B'[0m', 12)
+
+  PosixWrite(2, ''0D0A, 2)
+  PosixExit(ErrorNo)
+end
+
+procedure TokenCmp(Ident: []byte, Len: number) : number
+begin
+  i : number
+  i := 0
+  while Ident[i] = TokenBuf[i] begin
+    i := i + 1
+    if i = Len begin
+      return 1;
+    end
+  end
+  return 0;
 end
 
 procedure StoreChar()
@@ -940,7 +1060,7 @@ begin
   Discard := NextChar()
 end
 
-procedure GetToken()
+procedure ReturnToken() : number
 begin
   i       : number
   Len     : number
@@ -950,11 +1070,10 @@ begin
     Error(erBufferOverflow)
   end
   TokenSize := TokenSize - 512
-  TokenBuf  := Buf[CodePos + 256 .. ]
+  TokenBuf  := Buf[CodePos + 256 ..]
   TokenInt  := 0
-  Token     := 0
 
-  while ChClass = 35/* '#' */ begin // ch = 9,10,13,' ','/'
+  while ChClass = tcWhitespace begin // ch = 9,10,13,' ','/'
     if Ch = 47/* '/' */ begin
       NextChar()
       if Ch = 47/* '/' */ begin
@@ -963,8 +1082,7 @@ begin
         end
       else
         if Ch <> 42/* '*' */ begin
-          Token := 73/* 'I' / */
-          return;
+          return tkDiv
         end
         NextChar()
         while Ch <> 47/* '/' */ begin
@@ -975,17 +1093,16 @@ begin
         end
       end
     end
-    NextChar() 
+    NextChar()
   end
 
   if Ch > 255 begin
-    return;
+    return 0;
   end
-  if ChClass = 32 begin
+  if ChClass = tcInvalidChar begin
     Error(erInvalidCharacter)
   end
 
-  Token := ChClass
   if Ch = 39/* ' */ begin
 
     while Ch = 39/* ' */ begin
@@ -1018,108 +1135,113 @@ begin
         end
       end
     end
-
-    Token := tkStringLiteral
-  else
-    if ChClass = 94/* ^ */ begin /* 0...9 */
-      while ChClass = 94 begin
-        TokenInt := (10 * TokenInt) + Ch - 48
-        NextChar()
-      end
-      Token := tkNumericLiteral
-    else
-      if ChClass = 95/* _ */ begin /* letter or underscore */
-
-        // store identifier in space between code and symbol table
-        while (ChClass & 254) = 94 begin /* 94 or 95 */
-          StoreChar()
-        end
-        TokenBuf[TokenInt] := 0
-
-        // search keyword
-        Keywords : []byte
-        Keywords := '9procedure5begin3end2if4else5while6return4#asm8#forward3var6number4char6string4byte7boolean5false4true0'
-        i := 0
-        Len := 9
-        Token := 3
-        while Len <> 0 begin
-          if Len = TokenInt begin
-            if TokenCmp(Keywords[i+1 ..], TokenInt) <> false begin
-              return;
-            end
-          end
-          Token := Token + 1
-          i := i + Len + 1
-          Len := Keywords[i] - 48
-        end
-        Token := tkIdentifier
-      else
-        if Ch = 60/* < */ begin
-          NextChar()
-          //Token := 82/* R < */
-          if Ch = 60/* < */ begin
-            NextChar()
-            Token := 65/* A << */
-          else
-            if Ch = 61/* = */ begin
-              NextChar()
-              Token := 85/* U <= */
-            else
-              if Ch = 62/* > */ begin
-                NextChar()
-                Token := 81/* Q <> */
-              end
-            end
-          end
-        else
-          if Ch = 62/* > */ begin
-            NextChar()
-            //Token := 84/* T < */
-            if Ch = 61/* = */ begin
-              NextChar()
-              Token := 83/* S >= */
-            else
-              if Ch = 62/* > */ begin
-                NextChar()
-                Token := 66/* B >> */
-              end
-            end
-          else
-            if Ch = 58/* : */ begin
-              NextChar()
-              //Token := 58/* : */
-              if Ch = 61/* = */ begin
-                NextChar()
-                Token := tkAssign // ':='
-              end
-            else
-              if Ch = 45/* - */ begin
-                NextChar()
-                //Token := 67/* C */
-                if Ch = 62/* > */ begin
-                  NextChar()
-                  Token := tkArrow // '->'
-                end
-              else
-                if Ch = 46/* . */ begin
-                  NextChar()
-                  //Token := 46/* . */
-                  if Ch = 46/* . */ begin
-                    NextChar()
-                    Token := tkDots // '..'
-                  end
-                else
-                  // case for ()+,;=[]
-                  NextChar()
-                end
-              end
-            end
-          end
-        end
-      end
-    end
+    return tkStringLiteral
   end
+
+
+  if ChClass = tcDigit begin /* 0...9 */
+    while ChClass = tcDigit begin
+      TokenInt := (10 * TokenInt) + Ch - 48
+      NextChar()
+    end
+    return tkNumericLiteral
+  end
+
+  if ChClass = tcLetter begin /* letter or underscore */
+
+    // store identifier in space between code and symbol table
+    while (ChClass & 254) = 94 begin /* 94 or 95 */
+      StoreChar()
+    end
+    TokenBuf[TokenInt] := 0
+
+    // search keyword
+    Keywords : []byte
+    Keywords := '9procedure5begin3end2if4else5while6return4#asm8#forward3var6number4char6string4byte7boolean5false4true0'
+    i := 0
+    Len := Keywords[0] - 48
+    t : number := 3
+    while Len <> 0 begin
+      if Len = TokenInt begin
+        if TokenCmp(Keywords[i+1 ..], TokenInt) <> 0 begin
+          return t
+        end
+      end
+      t := t + 1
+      i := i + Len + 1
+      Len := Keywords[i] - 48
+    end
+    return tkIdentifier
+  end
+
+  if Ch = 60/* < */ begin
+    NextChar()
+    if Ch = 60/* < */ begin
+      NextChar()
+      return tkShiftL
+    end
+    if Ch = 61/* = */ begin
+      NextChar()
+      return tkLE
+    end
+    if Ch = 62/* > */ begin
+      NextChar()
+      return tkNE
+    end
+    return tkLT
+  end
+
+  if Ch = 62/* > */ begin
+    NextChar()
+    if Ch = 61/* = */ begin
+      NextChar()
+      return tkGE
+    end
+    if Ch = 62/* > */ begin
+      NextChar()
+      return tkShiftR
+    end
+    return tkGT
+  end
+
+  if Ch = 58/* : */ begin
+    NextChar()
+    if Ch = 61/* = */ begin
+      NextChar()
+      return tkAssign
+    end
+    return tkColon
+  end
+
+  if Ch = 45/* - */ begin
+    NextChar()
+    if Ch = 62/* > */ begin
+      NextChar()
+      return tkArrow
+    end
+    return tkMinus
+  end
+
+  if Ch = 46/* . */ begin
+    NextChar()
+    if Ch = 46/* . */ begin
+      NextChar()
+      return tkDots
+    end
+    return tkDot
+  end
+
+  // case for ()+,;=[]
+  r : number := ChClass
+  NextChar()
+  return r
 end
+
+procedure GetToken()
+begin
+  Token := ReturnToken()
+end
+
 
 
 
@@ -1137,7 +1259,7 @@ begin
   while Sym < BufSize begin
     Len : number := Buf[Sym + 5]
     if Len = TokenInt begin
-      if TokenCmp(Buf[Sym+6 ..], Len) = true begin
+      if TokenCmp(Buf[Sym+6 ..], Len) <> 0 begin
         return Sym
       end
     end
@@ -1189,49 +1311,29 @@ end
  * Parser
  **********************************************************************/
 
-procedure Accept(t: number) : boolean
+procedure Accept(t: number) : number
 begin
   if Token = t begin
     GetToken()
-    return true
+    return 1
   end
-  return false
+  return 0
 end
 
 procedure Expect(t: number)
 begin
-  if Accept(t) = false begin
+  if Accept(t) = 0 begin
     Error(200 + t) // Error: specific token expected
-  end
-end
-
-procedure AcceptType() : boolean
-begin
-  // accept any combination of [ ] -> followed by a type identifier
-  while (Token = tkArrow)
-      | (Token = tkOpeningSquareBracket)
-      | (Token = tkClosingSquareBracket)
-  begin
-    GetToken()
-  end
-
-  if (Token - 13) <= 4 begin
-    /* 13 number
-       14 char
-       15 string
-       16 byte
-       17 boolean */
-    GetToken()
-    return true
-  else
-    return false
   end
 end
 
 procedure ExpectType()
 begin
-  if AcceptType() = false begin
-    Error(erTypeExpected)
+  if Accept(tkOpeningSquareBracket) <> 0 begin
+    Expect(tkClosingSquareBracket)
+    Expect(tkByte)
+  else
+    Expect(tkNumber)
   end
 end
 
@@ -1252,6 +1354,7 @@ end
 procedure ParseExpression()
 begin
   ParseOperation()
+/*
   while (Token & 248) = 80 begin
     EmitPush()
     Op : number := Token & 15
@@ -1259,6 +1362,7 @@ begin
     ParseOperation()
     EmitComp(Op)
   end
+*/
 end
 
 procedure ParseCondition() : number
@@ -1281,11 +1385,11 @@ procedure ParseCall(Sym: number, Type: number, Ofs: number)
 begin
   ParamNo : number := 0
   Save    : number := EmitPreCall()
-  if Accept(tkClosingRoundBracket) = false begin
+  if Accept(tkClosingRoundBracket) = 0 begin
     ParseExpression()
     EmitArg()
     ParamNo := ParamNo + 1
-    while Accept(tkComma) <> false begin
+    while Accept(tkComma) <> 0 begin
       ParseExpression()
       EmitArg()
       ParamNo := ParamNo + 1
@@ -1342,20 +1446,20 @@ begin
   Type : number := Buf[Sym + 4]
   Ofs : number := GetBuf32(Sym)
 
-  if Accept(tkOpeningRoundBracket) begin // '('
+  if Accept(tkOpeningRoundBracket) <> 0 begin // '('
     ParseCall(Sym, Type, Ofs)
     return;
   end
-  if Accept(tkOpeningSquareBracket) begin // '['
+  if Accept(tkOpeningSquareBracket) <> 0 begin // '['
     ParseExpression()
-    if Accept(tkDots) begin // '..'
+    if Accept(tkDots) <> 0 begin // '..'
       Expect(tkClosingSquareBracket)
       EmitPush()
-      EmitLoad(Type & 1, Ofs)
+      EmitLoad(Type, Ofs)
       EmitOperation(opAdd)
     else
       Expect(tkClosingSquareBracket)
-      EmitIndexLoadArray(Type & 1, Ofs)
+      EmitIndexLoadArray(Type, Ofs)
     end
     return;
   end
@@ -1363,7 +1467,7 @@ begin
   if Type = tyGlobalConstant begin // constant
     EmitNumber(Ofs)
   else // variable
-    EmitLoad(Type & 1, Ofs)
+    EmitLoad(Type, Ofs)
   end
 end
 
@@ -1374,7 +1478,7 @@ begin
   Scope : number := EmitScopeBegin()
   while Token <> tkEnd begin
     ParseStatement()
-    Accept(tkSemicolon)
+    Discard : number := Accept(tkSemicolon)
   end
   GetToken() // tkEnd
   EmitScopeEnd(Scope)
@@ -1382,12 +1486,12 @@ end
 
 procedure ParseStatement()
 begin
-  if Accept(tkIf) <> false begin
+  if Accept(tkIf) <> 0 begin
     IfBranchPos : number := ParseCondition()
     Expect(tkBegin)
     Scope : number := EmitScopeBegin()
     while Token <> tkEnd begin
-      if Accept(tkElse) <> false begin
+      if Accept(tkElse) <> 0 begin
         EmitScopeEnd(Scope)
         Scope := EmitThenElse(IfBranchPos)
         ParseScope()
@@ -1395,7 +1499,7 @@ begin
         return;
       end
       ParseStatement()
-      Accept(tkSemicolon)
+      Discard : number := Accept(tkSemicolon)
     end
     GetToken() // tkEnd
     EmitScopeEnd(Scope)
@@ -1403,7 +1507,7 @@ begin
     return;
   end
 
-  if Accept(tkWhile) <> false begin
+  if Accept(tkWhile) <> 0 begin
     LoopEntry : number := EmitPreWhile()
     ExitBranchPos : number := ParseCondition()
     Expect(tkBegin)
@@ -1412,16 +1516,16 @@ begin
     return;
   end
 
-  if Accept(tkReturn) <> false begin
-    if Accept(tkSemicolon) = false begin
+  if Accept(tkReturn) <> 0 begin
+    if Accept(tkSemicolon) = 0 begin
       ParseExpression()
-      Accept(tkSemicolon)
+      Discard2 : number := Accept(tkSemicolon)
     end
     EmitReturn()
     return;
   end
 
-  if Accept(tkAsm) <> false begin
+  if Accept(tkAsm) <> 0 begin
     while Token <> tkEnd begin
       Expect(tkDot)
       Expect(tkString)
@@ -1450,7 +1554,7 @@ begin
       // SetBuf32()
     Expect(tkColon)
     ExpectType()
-    if Accept(tkAssign) <> false begin
+    if Accept(tkAssign) <> 0 begin
       ParseExpression()
       SetBuf32(SymsHead, EmitLocalVar(1))
     else
@@ -1464,26 +1568,26 @@ begin
   GetToken()
 
   // procedure call
-  if Accept(tkOpeningRoundBracket) <> false begin
+  if Accept(tkOpeningRoundBracket) <> 0 begin
     ParseCall(Sym, Type, Ofs)
     return;
   end
 
   // assignment to array
-  if Accept(tkOpeningSquareBracket) <> false begin
+  if Accept(tkOpeningSquareBracket) <> 0 begin
     ParseExpression()
     Expect(tkClosingSquareBracket)
     Expect(tkAssign)
-    EmitIndexPush(Type & 1, Ofs)
+    EmitIndexPush(Type, Ofs)
     ParseExpression()
     EmitPopStoreArray()
     return;
   end
 
   // assignmnet to variable
-  if Accept(tkAssign) <> false begin
+  if Accept(tkAssign) <> 0 begin
     ParseExpression()
-    EmitStore(Type & 1, Ofs)
+    EmitStore(Type, Ofs)
     return;
   end
 
@@ -1515,21 +1619,29 @@ begin
   RestoreHead : number := SymsHead
   i : number := 0
   Expect(tkOpeningRoundBracket)
-  while Accept(tkClosingRoundBracket) = false begin
+  while Accept(tkClosingRoundBracket) = 0 begin
     i := i + 1
-    if Token = tkIdentifier begin
-      SymAppend(i, tyLocalVariable) // parameters are local variables
-      Expect(tkColon)
+    if Token <> tkIdentifier begin
+      Error(erIdentifierExpected)
     end
+    SymAppend(i, tyLocalVariable) // parameters are local variables
+    Expect(tkColon)
     ExpectType()
-    Discard : number := Accept(tkComma) // ignore trailing comma
+    if Accept(tkComma) = 0 begin
+
+      // cannot use Expect() directly, because Token may not be changed
+      // to exit the loop
+      if Token <> tkClosingRoundBracket begin
+        Expect(tkClosingRoundBracket)
+      end
+    end
   end
 
-  if Accept(tkColon) <> false begin
+  if Accept(tkColon) <> 0 begin
     ExpectType()
   end
 
-  if Accept(tkForward) = false begin
+  if Accept(tkForward) = 0 begin
     Expect(tkBegin)
     SymFix(Sym, EmitFuncBegin(i))
     ParseScope()
@@ -1542,30 +1654,40 @@ procedure ParseDeclaration()
 begin
   GetToken() // ignore keyword `module`
   GetToken() // ignore name of module
-  Accept(tkSemicolon)
+  Discard : number := Accept(tkSemicolon)
 
-  while Accept(tkBegin) = false begin // while NOT begin
+  while Accept(tkBegin) = 0 begin // while NOT begin
     if Token = tkIdentifier begin
       SymAppend(EmitGlobalVar(), tyGlobalVariable)
-      if Accept(tkColon) begin
+      if Accept(tkColon) <> 0 begin
         ExpectType()
       end
-      if Accept(tkEqual) begin
-        if Token <> tkNumericLiteral begin
-          Error(erNumberExpected)
+      if Accept(tkEQ) <> 0 begin
+        if Token = tkNumericLiteral begin
+          Buf[SymsHead + 4] := tyGlobalConstant
+          SetBuf32(SymsHead, TokenInt)
+          GetToken()
+        else
+          if Token = tkStringLiteral begin
+            Addr  : number := EmitBinaryFunc(TokenInt, TokenBuf)
+            Align : number := TokenInt & 3
+            EmitBinaryFunc(4 - Align, ''00000000)
+            Buf[SymsHead + 4] := tyGlobalConstant
+            SetBuf32(SymsHead, Addr + BaseAddr)
+            GetToken()
+          else
+            Error(erNumberExpected)
+          end
         end
-        Buf[SymsHead + 4] := tyGlobalConstant
-        SetBuf32(SymsHead, TokenInt)
-        GetToken()
       end
     else
-      if Accept(tkProcedure) begin
+      if Accept(tkProcedure) <> 0 begin
         ParseProcedure()
       else
         Error(erBeginExpected)
       end
     end
-    Accept(tkSemicolon)
+    Discard := Accept(tkSemicolon)
   end
 end
 
@@ -1577,12 +1699,14 @@ end
 
 begin
   BufSize       := 65536
-  Buf           := BrkAlloc(BufSize + 16)
+  Buf           := BrkAlloc(BufSize + 1024 + 16)
   SymsHead      := BufSize
   LineNo        := 1
+  LineCol       := 0
   CodePos       := 0
 
-  DigitBuf16    := Buf[BufSize .. ]
+  LineBuf       := Buf[BufSize ..]
+  DigitBuf16    := Buf[BufSize+1024 ..]
 
   NextChar()
   GetToken()
@@ -1590,9 +1714,8 @@ begin
   ParseDeclaration()
   EmitFixCall(CallMain, CodePos)
   ParseMain()
-  Emit32(97544339)      // 93 68 D0 05  or x17, x0, 93
-  Emit32(115);          // 73 00 00 00  ecall
+  Emit32(1299)          // 13 05 00 00  li a0, 0
+  Emit32(97519763)      // 93 08 D0 05  li a7, 93
+  Emit32(115)           // 73 00 00 00  ecall
   PosixWrite(1, Buf, EmitEnd())
 end.
-
-

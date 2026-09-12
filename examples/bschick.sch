@@ -51,6 +51,7 @@ tkAssign                = 97    // 'a' :=
 tkDots                  = 99    // 'c' ..
 
 
+
 // symbol types
 tyGlobalConstant        = 70    // 32 bit number
 tyGlobalVariable        = 71
@@ -1044,7 +1045,7 @@ begin
         else
           if Ch = 62/* > */ begin
             NextChar()
-            //Token := 84/* T < */
+            //Token := 84/* T > */
             if Ch = 61/* = */ begin
               NextChar()
               Token := 83/* S >= */
@@ -1516,7 +1517,8 @@ begin
   ParseDeclaration()
   EmitFixCall(CallMain, CodePos)
   ParseMain()
-  Emit32(97544339)      // 93 68 D0 05  or x17, x0, 93
-  Emit32(115);          // 73 00 00 00  ecall
+  Emit32(1299)          // 13 05 00 00  li a0, 0
+  Emit32(97519763)      // 93 08 D0 05  li a7, 93
+  Emit32(115)           // 73 00 00 00  ecall
   PosixWrite(1, Buf, EmitEnd())
 end.

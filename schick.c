@@ -1432,7 +1432,8 @@ int main(void)
     parse_declaration();
     emit_fix_call(call_main, code_pos);
     parse_main();
-    emit32(97544339);   /* 93 68 D0 05  or x17, x0, 93 */
+    emit32(1299);       /* 13 05 00 00  li a0, 0 */
+    emit32(97519763);   /* 93 08 D0 05  li a7, 93 */
     emit32(115);        /* 73 00 00 00  ecall */
     write(1, (char *)buf, emit_end());
 

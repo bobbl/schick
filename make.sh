@@ -29,48 +29,119 @@ CC=${CC:-gcc}
 QEMU_RV32=${QEMU_RV32:-qemu-riscv32}
 OBJDUMP_RV32=${OBJDUMP_RV32:-riscv64-linux-gnu-objdump}
 
+esc_green="\033[32m"
+esc_red="\033[1;31m"
+esc_orange="\033[33m"
+esc="\033[0m"
+
+
+
+
+# Use one compiler to build another compiler
+# $1 uses this compiler
+# $2 to build this compiler
+#
+# c C Schick
+# b Bootstrap Schick
+# n Nightly Schick
+use_1_to_build_2 () {
+    case $2 in
+        b)  title="Bootstrap" ;;
+        n)  title="Nightly" ;;
+        *)  echo "Fatal: unknown compiler letter"
+            exit
+            ;;
+    esac
+    sname=../examples/${2}schick.sch
+    dname=${2}schick.${1}.rv32
+    rm -f $dname
+
+    case $1 in
+        c)  echo "Use C Schick to compile $title Schick"
+            ./cschick.x < $sname  > $dname || exit
+            ;;
+        b)  echo "Use Bootstrap Schick to compile $title Schick"
+            "$QEMU_RV32" ./bschick.c.rv32 < $sname  > $dname
+            ;;
+        n)  echo "Use Nightly Schick to compile $title Schick"
+            "$QEMU_RV32" ./nschick.b.rv32 < $sname  > $dname || exit
+            ;;
+        *) echo "Fatal: unknown compiler letter"
+           exit
+           ;;
+    esac
+    chmod +x $dname
+}
+
+
+use_cc_to_build_c () {
+    echo "Use $CC to compile C Schick"
+    "$CC" -o cschick.x ../schick.c || exit
+}
+
 
 # build all compilers from scratch: c, bootstrap and nightly
 build_compiler () {
     mkdir -p build
     cd build
-    "$CC" -o cschick.x ../schick.c
 
-    ./cschick.x < ../examples/bschick.sch > bschick.rv32
-    chmod +x bschick.rv32
-
-    "$QEMU_RV32" ./bschick.rv32 < ../examples/nschick.sch > nschick.rv32
-    chmod +x nschick.rv32
+    use_cc_to_build_c
+    use_1_to_build_2 c b
+    use_1_to_build_2 b n
 
     cd ..
 }
 
 
-# Compare 
+# compare two RV32 binaries
+# $1 filename 1
+# $2 filename 2
+compare () {
+    echo "Compare"
+
+    #od -Ax -tx1 -v bschick.rv32 > tmp.b.hex
+
+    "$OBJDUMP_RV32" -b binary -m riscv -D "$1" | tail -n +3 > tmp.a.disasm
+    "$OBJDUMP_RV32" -b binary -m riscv -D "$2" | tail -n +3 > tmp.b.disasm
+    diff tmp.a.disasm tmp.b.disasm > tmp.diff
+    lines=$(wc -l < tmp.diff)
+    if [ $lines -lt 30 ]
+    then
+        diff --color tmp.a.disasm tmp.b.disasm
+    else
+        echo "${esc_red}Many differences${esc}"
+    fi
+}
+
+
 test_bootstrap () {
     mkdir -p build
     cd build
-    rm -f cschick.x bschick.rv32 tschick.rv32
 
-    echo "Use $CC to compile C Schick"
-    "$CC" -o cschick.x ../schick.c
-
-    echo "Use C Schick to compile Bootstrap Schick"
-    ./cschick.x < ../examples/bschick.sch > bschick.rv32 || exit
-    chmod +x bschick.rv32
-
-    echo "Use Bootstrap Schick to compile Bootstrap Schick"
-    "$QEMU_RV32" ./bschick.rv32 < ../examples/bschick.sch > tschick.rv32 || exit
-    chmod +x tschick.rv32
-
-    echo "Compare"
-    #od -Ax -tx1 -v bschick.rv32 > tmp.b.hex
-    "$OBJDUMP_RV32" -b binary -m riscv -D bschick.rv32 | tail -n +3 > b.disasm
-    "$OBJDUMP_RV32" -b binary -m riscv -D tschick.rv32 | tail -n +3 > t.disasm
-    diff b.disasm t.disasm
+    use_cc_to_build_c
+    use_1_to_build_2 c b
+    use_1_to_build_2 b b
+    compare bschick.b.rv32 bschick.c.rv32
 
     cd ..
 }
+
+
+test_nightly () {
+    mkdir -p build
+    cd build
+
+    use_1_to_build_2 b b
+    use_1_to_build_2 n b
+    compare bschick.b.rv32 bschick.n.rv32
+
+    cd ..
+}
+
+
+
+
+
 
 
 # Compile and run a Schick file with the nightly compiler
@@ -123,6 +194,10 @@ do
 
         test_bootstrap)
             test_bootstrap
+            ;;
+
+        test_nightly)
+            test_nightly
             ;;
 
         test_hello)
