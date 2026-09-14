@@ -12,14 +12,20 @@ erFunctionRedefined     = 105
 erTypeExpected          = 106
 
 
-erBeginExpected         = 110 // of main routine
+erDeclarationExpected   = 110 // of main routine
 erStatementExpected     = 111
-erNumberExpected        = 112 // for constant declaration
+erConstantExpected      = 112 // for constant declaration
 erBinaryStringExpected  = 113
 erCompareOpExpected     = 114
+erNonHexInString        = 115
+er2ndHexDigitExpected   = 116
+
+erUnreachable           = 199
+erExpected              = 200
 
 
 // token from lexer
+tkEOF                   = 0
 tkStringLiteral         = 1
 tkIdentifier            = 31
 tkNumericLiteral        = 94
@@ -59,22 +65,25 @@ tkGE                    = 83    // 'S' >=
 tkGT                    = 84    // 'T' >
 tkLE                    = 85    // 'U' <=
 
-tkOpeningRoundBracket   = 40    // '('
-tkClosingRoundBracket   = 41    // ')'
-tkOpeningSquareBracket  = 91    // '['
-tkClosingSquareBracket  = 93    // ']'
+tkOpenRound   = 40    // '('
+tkCloseRound   = 41    // ')'
+tkOpenSquare  = 91    // '['
+tkCloseSquare  = 93    // ']'
 //tkOpeningCurlyBracket   = 123   // '{'
 //tkClosingCurlyBracket   = 125   // '}'
 
 tkAssign                = 97    // 'a' :=
 tkArrow                 = 98    // 'b' ->
 tkDots                  = 99    // 'c' ..
+tkPower                 = 100   // 'd' **
 
 // token class
+/*
 tcInvalidChar           = 32    // ' '
 tcWhitespace            = 35    // '#'    9,10,13,' ','/'
 tcDigit                 = 94    // '^'
 tcLetter                = 95    // '_'
+*/
 
 
 // symbol types
@@ -528,7 +537,7 @@ begin
     RegPos := RegPos - 1
   end
   EmitISDO(Imm, Rs, RegPos, 16387)
-    // LBU REG[reg_pos], 0(REG[reg_pos])
+    // LBU REG[RegPos], 0(REG[RegPos])
 end
 
 // TODO: inline
@@ -663,7 +672,7 @@ begin
   if Save > 10 begin
     // restore previously saved expression stack registers
     Emit32((Save << 7) + 327699)
-      // 000500513  MV REG[reg_pos], A0
+      // 000500513  MV REG[RegPos], A0
 
     RegPos := 10
     while RegPos < Save begin
@@ -922,6 +931,51 @@ begin
   PosixWrite(2, DigitBuf16[i ..], 16 - i)
 end
 
+//                                               !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ '
+ClassifyChar = '         !!  !                  !  ~ JGa()aF,aa!||||||||||a;aPa? }}}}}}~~~~~~~~~~~~~~~~~~~~[ ]E~ }}}}}}~~~~~~~~~~~~~~~~~~~~ D ~ '
+
+ccInvalidChar   = 32  // ' '
+ccWhitespace    = 33  // '!'    9, 10, 13, ' ', '/'
+ccMultiChar     = 97  // 'a'
+ccDigit         = 124 // '|'    '0' ... '9'
+ccHexLetter     = 125 // '}'    'A' ... 'F', 'a' ... 'f'
+ccLetter        = 126 // '~'    '#', 'G' ... 'Z', '_', 'g' ... 'z'
+
+tkOpenRound     = 40    // '('
+tkCloseRound    = 41    // ')'
+tkComma         = 44    // ','
+tkDot           = 46    // '.'
+tkColon         = 58    // ':'
+tkSemicolon     = 59    // ';'
+tkShiftL        = 65    // 'A' <<
+tkShiftR        = 66    // 'B' >>
+tkMinus         = 67    // 'C' -
+tkOr            = 68    // 'D' |
+tkXor           = 69    // 'E' ^
+tkPlus          = 70    // 'F' +
+tkAnd           = 71    // 'G' &
+tkMul           = 72    // 'H' *
+tkDiv           = 73    // 'I' /
+tkMod           = 74    // 'J' %
+
+tkEQ            = 80    // 'P' =
+tkNE            = 81    // 'Q' <>
+tkLT            = 82    // 'R' <
+tkGE            = 83    // 'S' >=
+tkGT            = 84    // 'T' >
+tkLE            = 85    // 'U' <=
+
+tkOpenSquare    = 91    // '['
+tkCloseSquare   = 93    // ']'
+
+tkAssign        = 97    // 'a' :=
+tkArrow         = 98    // 'b' ->
+tkDots          = 99    // 'c' ..
+
+
+
+
+
 procedure NextChar()
 begin
   Ch := PosixGetChar()
@@ -935,46 +989,39 @@ begin
     end
     LineCol := LineCol + 1
   end
-
-  ChClass := 32 /* ' ' */
-  if Ch < 128 begin
-    Classify : []byte
-    Classify := '         ##  #                  #  _ JG!()HF,C.#^^^^^^^^^^:;RPT  __________________________[ ]E_ __________________________ D   '
-      /*         012345678901234567890123456789012345678901234567890123456789
-                           1         2         3         4         5
-         ! = look at character for further processing
-         # = whitespace (9, 10, 13, ' ', '/')
-         ^ = digit [0123456789]
-         _ = letter or underscore
-        */
-    ChClass := Classify[Ch]
-
-/*
-         ##  #                  
-#  _ JG!()HF,C.#^^^^^^^^^^:;RPT 
- __________________________[ ]E_
- __________________________ D   
-*/
-
-
-  end
 end
 
 procedure ErrorMsg(e: number)
 begin
+  if e >= erExpected begin
+    if e=erExpected+tkCloseSquare begin PosixWrite(2, '`)` expected', 14) return; end
+
+    if e=erExpected+tkDot       begin PosixWrite(2, '`.` expected', 14) return; end
+    if e=erExpected+tkColon     begin PosixWrite(2, '`:` expected', 14) return; end
+    if e=erExpected+tkAssign    begin PosixWrite(2, '`:=` expected', 15) return; end
+
+    if e=erExpected+tkString    begin PosixWrite(2, '`string` expected', 19) return; end
+    if e=erExpected+tkBegin     begin PosixWrite(2, '`begin` expected', 18) return; end
+    if e=erExpected+tkNumber    begin PosixWrite(2, '`number` expected', 19) return; end
+    if e=erExpected+tkByte      begin PosixWrite(2, '`byte` expected', 17) return; end
+
+    //if e=erExpected+tk begin PosixWrite(2, '`` expected', 13) return; end
+  end
+
   if e=erBufferOverflow         begin PosixWrite(2, 'buffer overflow', 15) return; end
   if e=erInvalidCharacter       begin PosixWrite(2, 'invalid character', 17) return; end
   if e=erIdentifierExpected     begin PosixWrite(2, 'identifier expected', 19) return; end
   if e=erUnknownIdentifier      begin PosixWrite(2, 'unknown identifier', 18) return; end
   if e=erFunctionRedefined      begin PosixWrite(2, 'function rededined', 18) return; end
   if e=erTypeExpected           begin PosixWrite(2, 'type expected', 13) return; end
-  if e=erBeginExpected          begin PosixWrite(2, 'begin expected', 14) return; end
+  if e=erDeclarationExpected    begin PosixWrite(2, 'declaration expected', 20) return; end
   if e=erStatementExpected      begin PosixWrite(2, 'statement expected', 18) return; end
-  if e=erNumberExpected         begin PosixWrite(2, 'number expected', 15) return; end
+  if e=erConstantExpected       begin PosixWrite(2, 'constant value expected', 23) return; end
   if e=erBinaryStringExpected   begin PosixWrite(2, 'binary string expected', 22) return; end
-
-  if e=213                      begin PosixWrite(2, '`number` expected', 19) return; end
-  if e=241                      begin PosixWrite(2, '`)` expected', 14) return; end
+  if e=erNonHexInString         begin PosixWrite(2, 'invalid letter in hexadecimal string', 34) return; end
+  if e=er2ndHexDigitExpected    begin PosixWrite(2, 'second hex digit expected at end of hexadecimal string', 54) return; end
+  if e=erUnreachable            begin PosixWrite(2, 'internal error: unreachable', 27) return; end
+  //if e=er begin PosixWrite(2, '', ) return; end
 
   PrintNumber(e, 0)
 end
@@ -982,7 +1029,7 @@ end
 procedure Error(ErrorNo: number)
 begin
   if LineCol = 0 begin
-    // newline after last token => restore prevoíous line
+    // newline after last token => restore previous line
     LineCol := LineLastCol + 1
     LineNo := LineNo - 1
   end
@@ -1003,10 +1050,8 @@ begin
   PosixWrite(2, ' '1B'[1;31merror: '1B'[0m', 19)
   ErrorMsg(ErrorNo)
   PosixWrite(2, ''0D0A, 2)
-
   PrintNumber(LineNo, 5);
   PosixWrite(2, ' | ', 3)
-
 
   // read and print rest of line
   LineLen : number := LineCol
@@ -1073,7 +1118,13 @@ begin
   TokenBuf  := Buf[CodePos + 256 ..]
   TokenInt  := 0
 
-  while ChClass = tcWhitespace begin // ch = 9,10,13,' ','/'
+
+  if Ch > 128 begin
+    Error(erInvalidCharacter)
+  end
+  Class : number := ClassifyChar[Ch]
+
+  while Class = ccWhitespace begin // ch = 9,10,13,' ','/'
     if Ch = 47/* '/' */ begin
       NextChar()
       if Ch = 47/* '/' */ begin
@@ -1094,64 +1145,31 @@ begin
       end
     end
     NextChar()
+    Class := ClassifyChar[Ch]
   end
 
   if Ch > 255 begin
-    return 0;
+    return tkEOF;
   end
-  if ChClass = tcInvalidChar begin
+  if Class = ccInvalidChar begin
     Error(erInvalidCharacter)
   end
 
-  if Ch = 39/* ' */ begin
-
-    while Ch = 39/* ' */ begin
-      NextChar()
-      while Ch <> 39/* ' */ begin
-        StoreChar()
-      end
-
-      // hexadecimal pair appended?
-      NextChar()
-      i := 0
-      while i < 16 begin
-        if ChClass = 94/* ^ */ begin /* 0...9 */
-          i := Ch - 48
-        else
-          if ChClass = 95/* _ */ begin /* A...F */
-            i := Ch - 55
-          else
-            i := 16 // break out of loop
-          end
-        end
-        if i < 16 begin
-          NextChar()
-          Len := Ch - 48
-          if Len > 9 begin
-            Len := Len - 7
-          end
-          Ch := (i << 4) + Len
-          StoreChar()
-        end
-      end
-    end
-    return tkStringLiteral
-  end
-
-
-  if ChClass = tcDigit begin /* 0...9 */
-    while ChClass = tcDigit begin
+  if Class = ccDigit begin // 0...9
+    while Class = ccDigit begin
       TokenInt := (10 * TokenInt) + Ch - 48
       NextChar()
+      Class := ClassifyChar[Ch]
     end
     return tkNumericLiteral
   end
 
-  if ChClass = tcLetter begin /* letter or underscore */
+  if Class >= ccHexLetter begin // hex letter or letter or underscore or hash
 
     // store identifier in space between code and symbol table
-    while (ChClass & 254) = 94 begin /* 94 or 95 */
+    while Class >= ccDigit begin // ccDigit or ccLetter
       StoreChar()
+      Class := ClassifyChar[Ch]
     end
     TokenBuf[TokenInt] := 0
 
@@ -1172,6 +1190,95 @@ begin
       Len := Keywords[i] - 48
     end
     return tkIdentifier
+  end
+
+  if Ch = 39/* ' */ begin
+
+    while Ch = 39/* ' */ begin
+      NextChar()
+      while Ch <> 39/* ' */ begin
+        StoreChar()
+      end
+
+      // hexadecimal pairs appended?
+      NextChar()
+      HiNibble : number := 0
+      while HiNibble < 16 begin
+        Class := ClassifyChar[Ch]
+        if Class = ccDigit begin // 0...9
+          HiNibble := Ch - 48
+        else
+          if Class = ccHexLetter begin // A...F a...f
+            HiNibble := (Ch & 31) + 9
+          else
+            if Class = ccLetter begin
+              Error(erNonHexInString)
+            end
+            HiNibble := 16 // break out of loop
+          end
+        end
+        if HiNibble < 16 begin
+          NextChar()
+          Class := ClassifyChar[Ch]
+          LoNibble : number
+          if Class = ccDigit begin // 0...9
+            LoNibble := Ch - 48
+          else
+            if Class = ccHexLetter begin // A...F a...f
+              LoNibble := (Ch & 31) + 9
+            else
+              Error(er2ndHexDigitExpected)
+            end
+          end
+          Ch := (HiNibble << 4) + LoNibble
+          StoreChar()
+        end
+      end
+    end
+    return tkStringLiteral
+  end
+
+  if Class <> ccMultiChar begin // single char delimiters
+    NextChar()
+    return Class
+  end
+
+
+
+  if Ch = 42/* * */ begin
+    NextChar()
+    if Ch = 42/* * */ begin
+      NextChar()
+      return tkPower
+    end
+    return tkMul
+  end
+
+  if Ch = 45/* - */ begin
+    NextChar()
+    if Ch = 62/* > */ begin
+      NextChar()
+      return tkArrow
+    end
+    return tkMinus
+  end
+
+  if Ch = 46/* . */ begin
+    NextChar()
+    if Ch = 46/* . */ begin
+      NextChar()
+      return tkDots
+    end
+    return tkDot
+  end
+
+  if Ch = 58/* : */ begin
+    NextChar()
+    if Ch = 61/* = */ begin
+      NextChar()
+      return tkAssign
+    end
+    return tkColon
   end
 
   if Ch = 60/* < */ begin
@@ -1204,37 +1311,7 @@ begin
     return tkGT
   end
 
-  if Ch = 58/* : */ begin
-    NextChar()
-    if Ch = 61/* = */ begin
-      NextChar()
-      return tkAssign
-    end
-    return tkColon
-  end
-
-  if Ch = 45/* - */ begin
-    NextChar()
-    if Ch = 62/* > */ begin
-      NextChar()
-      return tkArrow
-    end
-    return tkMinus
-  end
-
-  if Ch = 46/* . */ begin
-    NextChar()
-    if Ch = 46/* . */ begin
-      NextChar()
-      return tkDots
-    end
-    return tkDot
-  end
-
-  // case for ()+,;=[]
-  r : number := ChClass
-  NextChar()
-  return r
+  Error(erUnreachable)
 end
 
 procedure GetToken()
@@ -1323,14 +1400,14 @@ end
 procedure Expect(t: number)
 begin
   if Accept(t) = 0 begin
-    Error(200 + t) // Error: specific token expected
+    Error(erExpected + t) // Error: specific token expected
   end
 end
 
 procedure ExpectType()
 begin
-  if Accept(tkOpeningSquareBracket) <> 0 begin
-    Expect(tkClosingSquareBracket)
+  if Accept(tkOpenSquare) <> 0 begin
+    Expect(tkCloseSquare)
     Expect(tkByte)
   else
     Expect(tkNumber)
@@ -1354,7 +1431,6 @@ end
 procedure ParseExpression()
 begin
   ParseOperation()
-/*
   while (Token & 248) = 80 begin
     EmitPush()
     Op : number := Token & 15
@@ -1362,7 +1438,6 @@ begin
     ParseOperation()
     EmitComp(Op)
   end
-*/
 end
 
 procedure ParseCondition() : number
@@ -1385,7 +1460,7 @@ procedure ParseCall(Sym: number, Type: number, Ofs: number)
 begin
   ParamNo : number := 0
   Save    : number := EmitPreCall()
-  if Accept(tkClosingRoundBracket) = 0 begin
+  if Accept(tkCloseRound) = 0 begin
     ParseExpression()
     EmitArg()
     ParamNo := ParamNo + 1
@@ -1394,7 +1469,7 @@ begin
       EmitArg()
       ParamNo := ParamNo + 1
     end
-    Expect(tkClosingRoundBracket)
+    Expect(tkCloseRound)
   end
 
   Link : number := EmitCall(Ofs, ParamNo, Save)
@@ -1408,10 +1483,10 @@ end
 
 procedure ParseFactor()
 begin
-  if Token = tkOpeningRoundBracket begin
+  if Token = tkOpenRound begin
     GetToken()
     ParseExpression()
-    Expect(tkClosingRoundBracket)
+    Expect(tkCloseRound)
     return;
   end
   if Token = tkNumericLiteral begin
@@ -1446,19 +1521,19 @@ begin
   Type : number := Buf[Sym + 4]
   Ofs : number := GetBuf32(Sym)
 
-  if Accept(tkOpeningRoundBracket) <> 0 begin // '('
+  if Accept(tkOpenRound) <> 0 begin // '('
     ParseCall(Sym, Type, Ofs)
     return;
   end
-  if Accept(tkOpeningSquareBracket) <> 0 begin // '['
+  if Accept(tkOpenSquare) <> 0 begin // '['
     ParseExpression()
     if Accept(tkDots) <> 0 begin // '..'
-      Expect(tkClosingSquareBracket)
+      Expect(tkCloseSquare)
       EmitPush()
       EmitLoad(Type, Ofs)
       EmitOperation(opAdd)
     else
-      Expect(tkClosingSquareBracket)
+      Expect(tkCloseSquare)
       EmitIndexLoadArray(Type, Ofs)
     end
     return;
@@ -1568,15 +1643,15 @@ begin
   GetToken()
 
   // procedure call
-  if Accept(tkOpeningRoundBracket) <> 0 begin
+  if Accept(tkOpenRound) <> 0 begin
     ParseCall(Sym, Type, Ofs)
     return;
   end
 
   // assignment to array
-  if Accept(tkOpeningSquareBracket) <> 0 begin
+  if Accept(tkOpenSquare) <> 0 begin
     ParseExpression()
-    Expect(tkClosingSquareBracket)
+    Expect(tkCloseSquare)
     Expect(tkAssign)
     EmitIndexPush(Type, Ofs)
     ParseExpression()
@@ -1618,8 +1693,8 @@ begin
 
   RestoreHead : number := SymsHead
   i : number := 0
-  Expect(tkOpeningRoundBracket)
-  while Accept(tkClosingRoundBracket) = 0 begin
+  Expect(tkOpenRound)
+  while Accept(tkCloseRound) = 0 begin
     i := i + 1
     if Token <> tkIdentifier begin
       Error(erIdentifierExpected)
@@ -1631,8 +1706,8 @@ begin
 
       // cannot use Expect() directly, because Token may not be changed
       // to exit the loop
-      if Token <> tkClosingRoundBracket begin
-        Expect(tkClosingRoundBracket)
+      if Token <> tkCloseRound begin
+        Expect(tkCloseRound)
       end
     end
   end
@@ -1676,15 +1751,16 @@ begin
             SetBuf32(SymsHead, Addr + BaseAddr)
             GetToken()
           else
-            Error(erNumberExpected)
+            Error(erConstantExpected)
           end
         end
       end
+
     else
       if Accept(tkProcedure) <> 0 begin
         ParseProcedure()
       else
-        Error(erBeginExpected)
+        Error(erDeclarationExpected)
       end
     end
     Discard := Accept(tkSemicolon)

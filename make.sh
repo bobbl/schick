@@ -101,15 +101,15 @@ compare () {
 
     #od -Ax -tx1 -v bschick.rv32 > tmp.b.hex
 
-    "$OBJDUMP_RV32" -b binary -m riscv -D "$1" | tail -n +3 > tmp.a.disasm
-    "$OBJDUMP_RV32" -b binary -m riscv -D "$2" | tail -n +3 > tmp.b.disasm
-    diff tmp.a.disasm tmp.b.disasm > tmp.diff
+    "$OBJDUMP_RV32" -b binary -m riscv -D "$1" | tail -n +3 > a.disasm
+    "$OBJDUMP_RV32" -b binary -m riscv -D "$2" | tail -n +3 > b.disasm
+    diff a.disasm b.disasm > tmp.diff
     lines=$(wc -l < tmp.diff)
     if [ $lines -lt 30 ]
     then
-        diff --color tmp.a.disasm tmp.b.disasm
+        diff --color a.disasm b.disasm
     else
-        echo "${esc_red}Many differences${esc}"
+        echo "${esc_red}Many differences:${esc} use diff a.disasm b.disasm"
     fi
 }
 
