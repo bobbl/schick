@@ -363,7 +363,7 @@ begin
         EmitISDO(0, RegPos, LocalReg[Ofs], 19)
           // ADDI REG[LocalReg[Ofs]], REG[RegPos], 0
       end
-      return;
+      return
     end
     // otherwise fall back to stack
   end
@@ -379,7 +379,7 @@ procedure EmitLoad(SymType: number, Ofs: number)
 begin
   if SymType = tyGlobalConstant begin
     EmitNumber(Ofs)
-    return;
+    return
   end
 
   if SymType = tyLocalVariable begin
@@ -388,7 +388,7 @@ begin
       EmitISDO(0, LocalReg[Ofs], RegPos, 19)
         // ADDI REG[LocalReg[Ofs]], REG[RegPos], 0
       LastInsnType := itPushReg
-      return;
+      return
     end
     // otherwise fall back to stack
   end
@@ -994,34 +994,34 @@ end
 procedure ErrorMsg(e: number)
 begin
   if e >= erExpected begin
-    if e=erExpected+tkCloseSquare begin PosixWrite(2, '`)` expected', 14) return; end
+    if e=erExpected+tkCloseSquare begin PosixWrite(2, '`)` expected', 14) return end
 
-    if e=erExpected+tkDot       begin PosixWrite(2, '`.` expected', 14) return; end
-    if e=erExpected+tkColon     begin PosixWrite(2, '`:` expected', 14) return; end
-    if e=erExpected+tkAssign    begin PosixWrite(2, '`:=` expected', 15) return; end
+    if e=erExpected+tkDot       begin PosixWrite(2, '`.` expected', 14) return end
+    if e=erExpected+tkColon     begin PosixWrite(2, '`:` expected', 14) return end
+    if e=erExpected+tkAssign    begin PosixWrite(2, '`:=` expected', 15) return end
 
-    if e=erExpected+tkString    begin PosixWrite(2, '`string` expected', 19) return; end
-    if e=erExpected+tkBegin     begin PosixWrite(2, '`begin` expected', 18) return; end
-    if e=erExpected+tkNumber    begin PosixWrite(2, '`number` expected', 19) return; end
-    if e=erExpected+tkByte      begin PosixWrite(2, '`byte` expected', 17) return; end
+    if e=erExpected+tkString    begin PosixWrite(2, '`string` expected', 19) return end
+    if e=erExpected+tkBegin     begin PosixWrite(2, '`begin` expected', 18) return end
+    if e=erExpected+tkNumber    begin PosixWrite(2, '`number` expected', 19) return end
+    if e=erExpected+tkByte      begin PosixWrite(2, '`byte` expected', 17) return end
 
-    //if e=erExpected+tk begin PosixWrite(2, '`` expected', 13) return; end
+    //if e=erExpected+tk begin PosixWrite(2, '`` expected', 13) return end
   end
 
-  if e=erBufferOverflow         begin PosixWrite(2, 'buffer overflow', 15) return; end
-  if e=erInvalidCharacter       begin PosixWrite(2, 'invalid character', 17) return; end
-  if e=erIdentifierExpected     begin PosixWrite(2, 'identifier expected', 19) return; end
-  if e=erUnknownIdentifier      begin PosixWrite(2, 'unknown identifier', 18) return; end
-  if e=erFunctionRedefined      begin PosixWrite(2, 'function rededined', 18) return; end
-  if e=erTypeExpected           begin PosixWrite(2, 'type expected', 13) return; end
-  if e=erDeclarationExpected    begin PosixWrite(2, 'declaration expected', 20) return; end
-  if e=erStatementExpected      begin PosixWrite(2, 'statement expected', 18) return; end
-  if e=erConstantExpected       begin PosixWrite(2, 'constant value expected', 23) return; end
-  if e=erBinaryStringExpected   begin PosixWrite(2, 'binary string expected', 22) return; end
-  if e=erNonHexInString         begin PosixWrite(2, 'invalid letter in hexadecimal string', 34) return; end
-  if e=er2ndHexDigitExpected    begin PosixWrite(2, 'second hex digit expected at end of hexadecimal string', 54) return; end
-  if e=erUnreachable            begin PosixWrite(2, 'internal error: unreachable', 27) return; end
-  //if e=er begin PosixWrite(2, '', ) return; end
+  if e=erBufferOverflow         begin PosixWrite(2, 'buffer overflow', 15) return end
+  if e=erInvalidCharacter       begin PosixWrite(2, 'invalid character', 17) return end
+  if e=erIdentifierExpected     begin PosixWrite(2, 'identifier expected', 19) return end
+  if e=erUnknownIdentifier      begin PosixWrite(2, 'unknown identifier', 18) return end
+  if e=erFunctionRedefined      begin PosixWrite(2, 'function rededined', 18) return end
+  if e=erTypeExpected           begin PosixWrite(2, 'type expected', 13) return end
+  if e=erDeclarationExpected    begin PosixWrite(2, 'declaration expected', 20) return end
+  if e=erStatementExpected      begin PosixWrite(2, 'statement expected', 18) return end
+  if e=erConstantExpected       begin PosixWrite(2, 'constant value expected', 23) return end
+  if e=erBinaryStringExpected   begin PosixWrite(2, 'binary string expected', 22) return end
+  if e=erNonHexInString         begin PosixWrite(2, 'invalid letter in hexadecimal string', 34) return end
+  if e=er2ndHexDigitExpected    begin PosixWrite(2, 'second hex digit expected at end of hexadecimal string', 54) return end
+  if e=erUnreachable            begin PosixWrite(2, 'internal error: unreachable', 27) return end
+  //if e=er begin PosixWrite(2, '', ) return end
 
   PrintNumber(e, 0)
 end
@@ -1487,27 +1487,27 @@ begin
     GetToken()
     ParseExpression()
     Expect(tkCloseRound)
-    return;
+    return
   end
   if Token = tkNumericLiteral begin
     EmitNumber(TokenInt)
     GetToken()
-    return;
+    return
   end
   if Token = tkStringLiteral begin
     EmitString(TokenInt, TokenBuf)
     GetToken()
-    return;
+    return
   end
   if Token = tkFalse begin
     EmitNumber(0)
     GetToken()
-    return;
+    return
   end
   if Token = tkTrue begin
     EmitNumber(1)
     GetToken()
-    return;
+    return
   end
 
   if Token <> tkIdentifier begin
@@ -1523,7 +1523,7 @@ begin
 
   if Accept(tkOpenRound) <> 0 begin // '('
     ParseCall(Sym, Type, Ofs)
-    return;
+    return
   end
   if Accept(tkOpenSquare) <> 0 begin // '['
     ParseExpression()
@@ -1536,7 +1536,7 @@ begin
       Expect(tkCloseSquare)
       EmitIndexLoadArray(Type, Ofs)
     end
-    return;
+    return
   end
 
   if Type = tyGlobalConstant begin // constant
@@ -1571,7 +1571,7 @@ begin
         Scope := EmitThenElse(IfBranchPos)
         ParseScope()
         EmitElseEnd(Scope)
-        return;
+        return
       end
       ParseStatement()
       Discard : number := Accept(tkSemicolon)
@@ -1579,7 +1579,7 @@ begin
     GetToken() // tkEnd
     EmitScopeEnd(Scope)
     EmitThenEnd(IfBranchPos)
-    return;
+    return
   end
 
   if Accept(tkWhile) <> 0 begin
@@ -1588,16 +1588,19 @@ begin
     Expect(tkBegin)
     ParseScope()
     EmitLoop(LoopEntry, ExitBranchPos)
-    return;
+    return
   end
 
   if Accept(tkReturn) <> 0 begin
-    if Accept(tkSemicolon) = 0 begin
-      ParseExpression()
-      Discard2 : number := Accept(tkSemicolon)
+    // special case: empty `return` before `end` needs no `;`
+    if Token <> tkEnd begin
+      if Accept(tkSemicolon) = 0 begin
+        ParseExpression()
+        Discard2 : number := Accept(tkSemicolon)
+      end
     end
     EmitReturn()
-    return;
+    return
   end
 
   if Accept(tkAsm) <> 0 begin
@@ -1611,7 +1614,7 @@ begin
       GetToken() // tkStringLiteral
     end
     GetToken() // tkEnd
-    return;
+    return
   end
 
   if Token <> tkIdentifier begin
@@ -1635,7 +1638,7 @@ begin
     else
       SetBuf32(SymsHead, EmitLocalVar(0))
     end
-    return;
+    return
   end
 
   Type : number := Buf[Sym + 4]
@@ -1645,7 +1648,7 @@ begin
   // procedure call
   if Accept(tkOpenRound) <> 0 begin
     ParseCall(Sym, Type, Ofs)
-    return;
+    return
   end
 
   // assignment to array
@@ -1656,14 +1659,14 @@ begin
     EmitIndexPush(Type, Ofs)
     ParseExpression()
     EmitPopStoreArray()
-    return;
+    return
   end
 
   // assignmnet to variable
   if Accept(tkAssign) <> 0 begin
     ParseExpression()
     EmitStore(Type, Ofs)
-    return;
+    return
   end
 
   // Declaration of variable, but identifier is already used.
@@ -1675,7 +1678,7 @@ begin
     TokenInt := Buf[Sym+5]
     SymAppend(EmitLocalVar(0), tyLocalVariable)
     ExpectType()
-    return;
+    return
   end
 
   Error(erStatementExpected)

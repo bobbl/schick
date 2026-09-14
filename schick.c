@@ -1262,9 +1262,12 @@ static void parse_statement(void)
         emit_loop(h, s);
     }
     else if (accept(9/*return*/) != 0) {
-        if (accept(';') == 0) {
-            parse_expression();
-            accept(';');
+        /* special case: empty `return` before `end` needs no `;` */
+        if (token != 5/* end */) { 
+            if (accept(';') == 0) {
+                parse_expression();
+                accept(';');
+            }
         }
         emit_return();
     }

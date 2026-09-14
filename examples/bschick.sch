@@ -276,7 +276,7 @@ begin
      ((ImmJ>>11) & 1))<< 20) |      // bit  20     = Imm[11]
     ((ImmJ & 1044480)      ) |      // bits 19..12 = Imm[19..12]
     ( Rd              <<  7) |      // bits 11..7  = Rd
-    111;                            // bits  6..0  = 0x6f (jal)
+    111                             // bits  6..0  = 0x6f (jal)
 end
 
 procedure EmitPush()
@@ -328,7 +328,7 @@ begin
         EmitISDO(0, RegPos, LocalReg[Ofs], 19)
           // ADDI REG[LocalReg[Ofs]], REG[RegPos], 0
       end
-      return;
+      return
     end
     // otherwise fall back to stack
   end
@@ -344,7 +344,7 @@ procedure EmitLoad(SymType: number, Ofs: number)
 begin
   if SymType = tyGlobalConstant begin
     EmitNumber(Ofs)
-    return;
+    return
   end
 
   if SymType = tyLocalVariable begin
@@ -353,7 +353,7 @@ begin
       EmitISDO(0, LocalReg[Ofs], RegPos, 19)
         // ADDI REG[LocalReg[Ofs]], REG[RegPos], 0
       LastInsnType := itPushReg
-      return;
+      return
     end
     // otherwise fall back to stack
   end
@@ -411,7 +411,7 @@ begin
       //           0xFF07F  ADDI ?, X0, ?
       // register need not be checked
       // if (((last_insn & 1048575) == (19 + ((reg_pos + 11) << 7))) { */
-      Imm := LastInsn >> 20;
+      Imm := LastInsn >> 20
       if Operation = 3 begin
         Imm := 0 - Imm
             /* 00000013  ADDI reg, reg, -imm
@@ -419,11 +419,11 @@ begin
                cannot happen */
       end
       CodePos := CodePos - 4
-      Op := (((1854505 >> Shift) & 7) << 12) + 19;
+      Op := (((1854505 >> Shift) & 7) << 12) + 19
         // octal: 704'6051
     end
   end
-  EmitIRDO(Imm, RegPos, Op);
+  EmitIRDO(Imm, RegPos, Op)
 end
 
 procedure EmitIndexPush(SymType: number, Ofs: number)
@@ -679,7 +679,7 @@ begin
     CP := CP - 4
     CodePos := CP
   end
-  while Next <> 0begin
+  while Next <> 0 begin
     Pos : number := Next
     Next := GetBuf32(Pos)
     SetBuf32(Pos, InsnJAL(0, CP - Pos))
@@ -935,7 +935,7 @@ begin
       else
         if Ch <> 42/* '*' */ begin
           Token := 73/* 'I' / */
-          return;
+          return
         end
         NextChar()
         while Ch <> 47/* '/' */ begin
@@ -950,7 +950,7 @@ begin
   end
 
   if Ch > 255 begin
-    return;
+    return
   end
   if ChClass = 32 begin
     Error(erInvalidCharacter)
@@ -1016,7 +1016,7 @@ begin
         while Len <> 0 begin
           if Len = TokenInt begin
             if TokenCmp(Keywords[i+1 ..], TokenInt) <> 0 begin
-              return;
+              return
             end
           end
           Token := Token + 1
@@ -1235,17 +1235,17 @@ begin
     GetToken()
     ParseExpression()
     Expect(tkClosingRoundBracket)
-    return;
+    return
   end
   if Token = tkNumericLiteral begin
     EmitNumber(TokenInt)
     GetToken()
-    return;
+    return
   end
   if Token = tkStringLiteral begin
     EmitString(TokenInt, TokenBuf)
     GetToken()
-    return;
+    return
   end
 
   if Token <> tkIdentifier begin
@@ -1261,7 +1261,7 @@ begin
 
   if Accept(tkOpeningRoundBracket) <> 0 begin // '('
     ParseCall(Sym, Type, Ofs)
-    return;
+    return
   end
   if Accept(tkOpeningSquareBracket) <> 0 begin // '['
     ParseExpression()
@@ -1274,7 +1274,7 @@ begin
       Expect(tkClosingSquareBracket)
       EmitIndexLoadArray(Type, Ofs)
     end
-    return;
+    return
   end
 
   if Type = tyGlobalConstant begin // constant
@@ -1309,7 +1309,7 @@ begin
         Scope := EmitThenElse(IfBranchPos)
         ParseScope()
         EmitElseEnd(Scope)
-        return;
+        return
       end
       ParseStatement()
       Discard : number := Accept(tkSemicolon)
@@ -1317,7 +1317,7 @@ begin
     GetToken() // tkEnd
     EmitScopeEnd(Scope)
     EmitThenEnd(IfBranchPos)
-    return;
+    return
   end
 
   if Accept(tkWhile) <> 0 begin
@@ -1326,16 +1326,19 @@ begin
     Expect(tkBegin)
     ParseScope()
     EmitLoop(LoopEntry, ExitBranchPos)
-    return;
+    return
   end
 
   if Accept(tkReturn) <> 0 begin
-    if Accept(tkSemicolon) = 0 begin
-      ParseExpression()
-      Discard2 : number := Accept(tkSemicolon)
+    // special case: empty `return` before `end` needs no `;`
+    if Token <> tkEnd begin
+        if Accept(tkSemicolon) = 0 begin
+          ParseExpression()
+          Discard2 : number := Accept(tkSemicolon)
+        end
     end
     EmitReturn()
-    return;
+    return
   end
 
   if Accept(tkAsm) <> 0 begin
@@ -1349,7 +1352,7 @@ begin
       GetToken() // tkStringLiteral
     end
     GetToken() // tkEnd
-    return;
+    return
   end
 
   if Token <> tkIdentifier begin
@@ -1373,7 +1376,7 @@ begin
     else
       SetBuf32(SymsHead, EmitLocalVar(0))
     end
-    return;
+    return
   end
 
   Type : number := Buf[Sym + 4]
@@ -1383,7 +1386,7 @@ begin
   // procedure call
   if Accept(tkOpeningRoundBracket) <> 0 begin
     ParseCall(Sym, Type, Ofs)
-    return;
+    return
   end
 
   // assignment to array
@@ -1394,14 +1397,14 @@ begin
     EmitIndexPush(Type, Ofs)
     ParseExpression()
     EmitPopStoreArray()
-    return;
+    return
   end
 
   // assignmnet to variable
   if Accept(tkAssign) <> 0 begin
     ParseExpression()
     EmitStore(Type, Ofs)
-    return;
+    return
   end
 
   // Declaration of variable, but identifier is already used.
@@ -1413,7 +1416,7 @@ begin
     TokenInt := Buf[Sym+5]
     SymAppend(EmitLocalVar(0), tyLocalVariable)
     ExpectType()
-    return;
+    return
   end
 
   Error(erStatementExpected)
