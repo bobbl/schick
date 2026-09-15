@@ -24,66 +24,6 @@ erUnreachable           = 199
 erExpected              = 200
 
 
-// token from lexer
-tkEOF                   = 0
-tkStringLiteral         = 1
-tkIdentifier            = 31
-tkNumericLiteral        = 94
-
-tkProcedure             = 3
-tkBegin                 = 4
-tkEnd                   = 5
-tkIf                    = 6
-tkElse                  = 7
-tkWhile                 = 8
-tkReturn                = 9
-tkAsm                   = 10
-tkForward               = 11
-tkVar                   = 12
-tkNumber                = 13
-//tkChar                  = 14
-tkString                = 15    // only for assembly
-tkByte                  = 16
-tkBoolean               = 17
-tkFalse                 = 18
-tkTrue                  = 19
-
-
-
-tkComma                 = 44    // ','
-tkDot                   = 46    // '.'
-tkColon                 = 58    // ':'
-tkSemicolon             = 59    // ';'
-tkShiftL                = 65
-tkShiftR                = 66    // 'B' >>
-tkMinus                 = 67    // 'C' -
-tkDiv                   = 73    // 'I' /
-tkEQ                    = 80    // 'P' =
-tkNE                    = 81    // 'Q' <>
-tkLT                    = 82    // 'R' <
-tkGE                    = 83    // 'S' >=
-tkGT                    = 84    // 'T' >
-tkLE                    = 85    // 'U' <=
-
-tkOpenRound   = 40    // '('
-tkCloseRound   = 41    // ')'
-tkOpenSquare  = 91    // '['
-tkCloseSquare  = 93    // ']'
-//tkOpeningCurlyBracket   = 123   // '{'
-//tkClosingCurlyBracket   = 125   // '}'
-
-tkAssign                = 97    // 'a' :=
-tkArrow                 = 98    // 'b' ->
-tkDots                  = 99    // 'c' ..
-tkPower                 = 100   // 'd' **
-
-// token class
-/*
-tcInvalidChar           = 32    // ' '
-tcWhitespace            = 35    // '#'    9,10,13,' ','/'
-tcDigit                 = 94    // '^'
-tcLetter                = 95    // '_'
-*/
 
 
 // symbol types
@@ -892,6 +832,106 @@ end
  * Scanner
  **********************************************************************/
 
+//                                               !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ '
+ClassifyChar = '         !!  !                  !  ~ JGa()aF,aa!||||||||||a;aPa? }}}}}}~~~~~~~~~~~~~~~~~~~~[ ]E~ }}}}}}~~~~~~~~~~~~~~~~~~~~ D ~ '
+
+ccInvalidChar   = 32  // ' '
+ccWhitespace    = 33  // '!'    9, 10, 13, ' ', '/'
+ccMultiChar     = 97  // 'a'
+ccDigit         = 124 // '|'    '0' ... '9'
+ccHexLetter     = 125 // '}'    'A' ... 'F', 'a' ... 'f'
+ccLetter        = 126 // '~'    '#', 'G' ... 'Z', '_', 'g' ... 'z'
+
+// token from lexer
+tkEOF                   = 0
+tkStringLiteral         = 1
+tkIdentifier            = 31
+tkNumericLiteral        = 94
+
+tkOpenRound     = 40    // '('
+tkCloseRound    = 41    // ')'
+tkComma         = 44    // ','
+tkDot           = 46    // '.'
+tkColon         = 58    // ':'
+tkSemicolon     = 59    // ';'
+tkShiftL        = 65    // 'A' <<
+tkShiftR        = 66    // 'B' >>
+tkMinus         = 67    // 'C' -
+tkOr            = 68    // 'D' |
+tkXor           = 69    // 'E' ^
+tkPlus          = 70    // 'F' +
+tkAnd           = 71    // 'G' &
+tkMul           = 72    // 'H' *
+tkDiv           = 73    // 'I' /
+tkMod           = 74    // 'J' %
+
+tkEQ            = 80    // 'P' =
+tkNE            = 81    // 'Q' <>
+tkLT            = 82    // 'R' <
+tkGE            = 83    // 'S' >=
+tkGT            = 84    // 'T' >
+tkLE            = 85    // 'U' <=
+
+tkOpenSquare    = 91    // '['
+tkCloseSquare   = 93    // ']'
+
+tkAssign        = 97    // 'a' :=
+tkArrow         = 98    // 'b' ->
+tkDots          = 99    // 'c' ..
+tkPower         = 100   // 'd' **
+
+tkKeyword       = 150
+
+
+KeywordList  = 'if end for nil var #asm byte char elif else real true type #goto #pure begin break const false until while #label import module number return string #packed #public boolean #forward continue procedure'
+KeywordOfs   = '..'0003133B6B95ADBFC9
+KeywordToken = '..'0001050D151B1E2021
+
+// token          value                            keyword       offset
+tkIf            = 150   // = tkKeyword + 0         // if           00 KeywordOfs[2]
+
+tkEnd           = 151   // = tkKeyword + 1         // end          03 KeywordOfs[1]
+tkFor           = 152   // = tkKeyword + 2         // for          07
+tkNil           = 153   // = tkKeyword + 3         // nil          0B
+tkVar           = 154   // = tkKeyword + 4         // var          0F
+
+tkAsm           = 155   // = tkKeyword + 5         // #asm         13 KeywordOfs[2]
+tkByte          = 156   // = tkKeyword + 6         // byte         18
+tkChar          = 157   // = tkKeyword + 7         // char         1D
+tkElif          = 158   // = tkKeyword + 8         // elif         22
+tkElse          = 159   // = tkKeyword + 9         // else         27
+tkReal          = 160   // = tkKeyword + 10        // real         2C
+tkTrue          = 161   // = tkKeyword + 11        // true         31
+tkType          = 162   // = tkKeyword + 12        // type         36
+
+tkGoto          = 163   // = tkKeyword + 13        // goto         3B KeywordOfs[3]
+tkPure          = 164   // = tkKeyword + 14        // #pure        41
+tkBegin         = 165   // = tkKeyword + 15        // begin        47
+tkBreak         = 166   // = tkKeyword + 16        // break        4D
+tkConst         = 167   // = tkKeyword + 17        // const        53
+tkFalse         = 168   // = tkKeyword + 18        // false        59
+tkUntil         = 169   // = tkKeyword + 19        // until        5F
+tkWhile         = 170   // = tkKeyword + 20        // while        65
+
+tkLabel         = 171   // = tkKeyword + 21        // #label       6B
+tkImport        = 172   // = tkKeyword + 22        // import       72
+tkModule        = 173   // = tkKeyword + 23        // module       79
+tkNumber        = 174   // = tkKeyword + 24        // number       80
+tkReturn        = 175   // = tkKeyword + 25        // return       87
+tkString        = 176   // = tkKeyword + 26        // string       8E
+
+tkPacked        = 177   // = tkKeyword + 27        // #packed      95
+tkPublic        = 178   // = tkKeyword + 28        // #public      9D
+tkBoolean       = 179   // = tkKeyword + 29        // boolean      A5
+
+tkForward       = 180   // = tkKeyword + 30        // #forward     AD
+tkContinue      = 181   // = tkKeyword + 31        // continue     B6
+
+tkProcedure     = 182   // = tkKeyword + 32        // procedure    BF
+
+
+
+
 LineBufSize     = 1024
 
 DigitBuf16      : []byte
@@ -930,51 +970,6 @@ begin
   end
   PosixWrite(2, DigitBuf16[i ..], 16 - i)
 end
-
-//                                               !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ '
-ClassifyChar = '         !!  !                  !  ~ JGa()aF,aa!||||||||||a;aPa? }}}}}}~~~~~~~~~~~~~~~~~~~~[ ]E~ }}}}}}~~~~~~~~~~~~~~~~~~~~ D ~ '
-
-ccInvalidChar   = 32  // ' '
-ccWhitespace    = 33  // '!'    9, 10, 13, ' ', '/'
-ccMultiChar     = 97  // 'a'
-ccDigit         = 124 // '|'    '0' ... '9'
-ccHexLetter     = 125 // '}'    'A' ... 'F', 'a' ... 'f'
-ccLetter        = 126 // '~'    '#', 'G' ... 'Z', '_', 'g' ... 'z'
-
-tkOpenRound     = 40    // '('
-tkCloseRound    = 41    // ')'
-tkComma         = 44    // ','
-tkDot           = 46    // '.'
-tkColon         = 58    // ':'
-tkSemicolon     = 59    // ';'
-tkShiftL        = 65    // 'A' <<
-tkShiftR        = 66    // 'B' >>
-tkMinus         = 67    // 'C' -
-tkOr            = 68    // 'D' |
-tkXor           = 69    // 'E' ^
-tkPlus          = 70    // 'F' +
-tkAnd           = 71    // 'G' &
-tkMul           = 72    // 'H' *
-tkDiv           = 73    // 'I' /
-tkMod           = 74    // 'J' %
-
-tkEQ            = 80    // 'P' =
-tkNE            = 81    // 'Q' <>
-tkLT            = 82    // 'R' <
-tkGE            = 83    // 'S' >=
-tkGT            = 84    // 'T' >
-tkLE            = 85    // 'U' <=
-
-tkOpenSquare    = 91    // '['
-tkCloseSquare   = 93    // ']'
-
-tkAssign        = 97    // 'a' :=
-tkArrow         = 98    // 'b' ->
-tkDots          = 99    // 'c' ..
-
-
-
-
 
 procedure NextChar()
 begin
@@ -1107,8 +1102,6 @@ end
 
 procedure ReturnToken() : number
 begin
-  i       : number
-  Len     : number
 
   TokenSize := SymsHead - CodePos
   if TokenSize < 1024 begin
@@ -1124,6 +1117,7 @@ begin
   end
   Class : number := ClassifyChar[Ch]
 
+  // ignore whitespace and comments
   while Class = ccWhitespace begin // ch = 9,10,13,' ','/'
     if Ch = 47/* '/' */ begin
       NextChar()
@@ -1155,6 +1149,7 @@ begin
     Error(erInvalidCharacter)
   end
 
+  // numeric literal
   if Class = ccDigit begin // 0...9
     while Class = ccDigit begin
       TokenInt := (10 * TokenInt) + Ch - 48
@@ -1164,7 +1159,8 @@ begin
     return tkNumericLiteral
   end
 
-  if Class >= ccHexLetter begin // hex letter or letter or underscore or hash
+  // identifier or keyword
+  if Class >= ccHexLetter begin // ccHexLetter or ccLetter (incl. `_` and `#`)
 
     // store identifier in space between code and symbol table
     while Class >= ccDigit begin // ccDigit or ccLetter
@@ -1173,27 +1169,34 @@ begin
     end
     TokenBuf[TokenInt] := 0
 
+    // keywords have length 2 (if) ... 9 (procedure)
+    Len : number := TokenInt
+    if Len < 2 begin
+      return tkIdentifier
+    end
+    if Len > 9 begin
+      return tkIdentifier
+    end
+
     // search keyword
-    Keywords : []byte
-    Keywords := '9procedure5begin3end2if4else5while6return4#asm8#forward3var6number4char6string4byte7boolean5false4true0'
-    i := 0
-    Len := Keywords[0] - 48
-    t : number := 3
-    while Len <> 0 begin
-      if Len = TokenInt begin
-        if TokenCmp(Keywords[i+1 ..], TokenInt) <> 0 begin
-          return t
-        end
+    Ofs    : number := KeywordOfs[Len]
+      // index in KeywordList with the first keyword of this length
+    OfsEnd : number := KeywordOfs[Len+1]
+      // index of next length is the end of keywords with this length
+    t      : number := KeywordToken[Len] + tkKeyword
+      // token for the first keyword of this length
+    while Ofs < OfsEnd begin
+      if TokenCmp(KeywordList[Ofs ..], Len) <> 0 begin
+        return t
       end
-      t := t + 1
-      i := i + Len + 1
-      Len := Keywords[i] - 48
+      Ofs := Ofs + Len + 1      // next word
+      t := t + 1                // next token number
     end
     return tkIdentifier
   end
 
+  // string literal
   if Ch = 39/* ' */ begin
-
     while Ch = 39/* ' */ begin
       NextChar()
       while Ch <> 39/* ' */ begin
@@ -1238,13 +1241,13 @@ begin
     return tkStringLiteral
   end
 
-  if Class <> ccMultiChar begin // single char delimiters
+  // single char delimiter
+  if Class <> ccMultiChar begin
     NextChar()
     return Class
   end
 
-
-
+  // remaining: possible multi char delimiter
   if Ch = 42/* * */ begin
     NextChar()
     if Ch = 42/* * */ begin
@@ -1317,6 +1320,7 @@ end
 procedure GetToken()
 begin
   Token := ReturnToken()
+  //PrintNumber(Token, 5)
 end
 
 
