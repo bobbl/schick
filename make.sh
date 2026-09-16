@@ -148,7 +148,7 @@ test_nightly () {
 # $1 Schick source file name
 run () {
     elf=build/$(basename "$1" .sch).rv32
-    "$QEMU_RV32" ./build/nschick.rv32 < "$1" > "$elf"
+    "$QEMU_RV32" ./build/nschick.b.rv32 < "$1" > "$elf"
     if [ $? -eq 0 ]
     then
         chmod +x "$elf"

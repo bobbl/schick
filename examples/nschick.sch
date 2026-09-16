@@ -833,54 +833,64 @@ end
  **********************************************************************/
 
 //                                               !"#$%&'()*+,-./0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ[\]^_`abcdefghijklmnopqrstuvwxyz{|}~ '
-ClassifyChar = '         !!  !                  !  ~ JGa()aF,aa!||||||||||a;aPa? }}}}}}~~~~~~~~~~~~~~~~~~~~[ ]E~ }}}}}}~~~~~~~~~~~~~~~~~~~~ D ~ '
+ClassifyChar = '         !!  !                  !  ~ JG"<="F9""!||||||||||";"P"? }}}}}}~~~~~~~~~~~~~~~~~~~~> ?E~ }}}}}}~~~~~~~~~~~~~~~~~~~~ D ~ '
 
-ccInvalidChar   = 32  // ' '
-ccWhitespace    = 33  // '!'    9, 10, 13, ' ', '/'
-ccMultiChar     = 97  // 'a'
-ccDigit         = 124 // '|'    '0' ... '9'
-ccHexLetter     = 125 // '}'    'A' ... 'F', 'a' ... 'f'
-ccLetter        = 126 // '~'    '#', 'G' ... 'Z', '_', 'g' ... 'z'
+// The chars '0123456789:;<=>?@ABCDEFGHIJKLMNOPQRSTUVWXYZ' in ClassifyChar are
+// converted to Tokens 0 ... 52
+// The other chars belong to a character class:
+
+ccInvalidChar   = 32    // ' '
+ccWhitespace    = 33    // '!'    9, 10, 13, ' ', '/'
+ccMultiChar     = 34    // '"'
+ccDigit         = 124   // '|'    '0' ... '9'
+ccHexLetter     = 125   // '}'    'A' ... 'F', 'a' ... 'f'
+ccLetter        = 126   // '~'    '#', 'G' ... 'Z', '_', 'g' ... 'z'
+
+
 
 // token from lexer
-tkEOF                   = 0
-tkStringLiteral         = 1
-tkIdentifier            = 31
-tkNumericLiteral        = 94
+tkEOF           = 0
+tkIdentifier    = 1
+tkStringLiteral = 2
+tkIntegerLiteral= 3
 
-tkOpenRound     = 40    // '('
-tkCloseRound    = 41    // ')'
-tkComma         = 44    // ','
-tkDot           = 46    // '.'
-tkColon         = 58    // ':'
-tkSemicolon     = 59    // ';'
-tkShiftL        = 65    // 'A' <<
-tkShiftR        = 66    // 'B' >>
-tkMinus         = 67    // 'C' -
-tkOr            = 68    // 'D' |
-tkXor           = 69    // 'E' ^
-tkPlus          = 70    // 'F' +
-tkAnd           = 71    // 'G' &
-tkMul           = 72    // 'H' *
-tkDiv           = 73    // 'I' /
-tkMod           = 74    // 'J' %
+DelimiterList   = '. , : ; ( ) [ ] UNUSED << >> - | ^ + & * / % UNUSED := -> .. ** = <> < >= > <= UNUSED UNUSED'
 
-tkEQ            = 80    // 'P' =
-tkNE            = 81    // 'Q' <>
-tkLT            = 82    // 'R' <
-tkGE            = 83    // 'S' >=
-tkGT            = 84    // 'T' >
-tkLE            = 85    // 'U' <=
+                        // char in ClassifyChar, char in input stream
+tkDot           = 8     //     .
+tkComma         = 9     // '9' ,
+tkColon         = 10    //     :
+tkSemicolon     = 11    // ';' ;
+tkOpenRound     = 12    // '<' (
+tkCloseRound    = 13    // '=' )
+tkOpenSquare    = 14    // '>' [
+tkCloseSquare   = 15    // '?' ]
 
-tkOpenSquare    = 91    // '['
-tkCloseSquare   = 93    // ']'
+tkShiftL        = 17    //     <<
+tkShiftR        = 18    //     >>
+tkMinus         = 19    // 'C' -
+tkOr            = 20    // 'D' |
+tkXor           = 21    // 'E' ^
+tkPlus          = 22    // 'F' +
+tkAnd           = 23    // 'G' &
+tkMul           = 24    //     *
+tkDiv           = 25    //     /
+tkMod           = 26    // 'J' %
 
-tkAssign        = 97    // 'a' :=
-tkArrow         = 98    // 'b' ->
-tkDots          = 99    // 'c' ..
-tkPower         = 100   // 'd' **
+tkAssign        = 28    //     :=
+tkArrow         = 29    //     ->
+tkDots          = 30    //     ..
+tkPower         = 31    //     **
 
-tkKeyword       = 150
+tkEQ            = 32    // 'P' =
+tkNE            = 33    //     <>
+tkLT            = 34    //     <
+tkGE            = 35    //     >=
+tkGT            = 36    //     >
+tkLE            = 37    //     <=
+
+tkKeyword       = 40
+
 
 
 KeywordList  = 'if end for nil var #asm byte char elif else real true type #goto #pure begin break const false until while #label import module number return string #packed #public boolean #forward continue procedure'
@@ -888,46 +898,46 @@ KeywordOfs   = '..'0003133B6B95ADBFC9
 KeywordToken = '..'0001050D151B1E2021
 
 // token          value                            keyword       offset
-tkIf            = 150   // = tkKeyword + 0         // if           00 KeywordOfs[2]
+tkIf            = 40   // = tkKeyword + 0         // if           00 KeywordOfs[2]
 
-tkEnd           = 151   // = tkKeyword + 1         // end          03 KeywordOfs[1]
-tkFor           = 152   // = tkKeyword + 2         // for          07
-tkNil           = 153   // = tkKeyword + 3         // nil          0B
-tkVar           = 154   // = tkKeyword + 4         // var          0F
+tkEnd           = 41   // = tkKeyword + 1         // end          03 KeywordOfs[3]
+tkFor           = 42   // = tkKeyword + 2         // for          07
+tkNil           = 43   // = tkKeyword + 3         // nil          0B
+tkVar           = 44   // = tkKeyword + 4         // var          0F
 
-tkAsm           = 155   // = tkKeyword + 5         // #asm         13 KeywordOfs[2]
-tkByte          = 156   // = tkKeyword + 6         // byte         18
-tkChar          = 157   // = tkKeyword + 7         // char         1D
-tkElif          = 158   // = tkKeyword + 8         // elif         22
-tkElse          = 159   // = tkKeyword + 9         // else         27
-tkReal          = 160   // = tkKeyword + 10        // real         2C
-tkTrue          = 161   // = tkKeyword + 11        // true         31
-tkType          = 162   // = tkKeyword + 12        // type         36
+tkAsm           = 45   // = tkKeyword + 5         // #asm         13 KeywordOfs[4]
+tkByte          = 46   // = tkKeyword + 6         // byte         18
+tkChar          = 47   // = tkKeyword + 7         // char         1D
+tkElif          = 48   // = tkKeyword + 8         // elif         22
+tkElse          = 49   // = tkKeyword + 9         // else         27
+tkReal          = 50   // = tkKeyword + 10        // real         2C
+tkTrue          = 51   // = tkKeyword + 11        // true         31
+tkType          = 52   // = tkKeyword + 12        // type         36
 
-tkGoto          = 163   // = tkKeyword + 13        // goto         3B KeywordOfs[3]
-tkPure          = 164   // = tkKeyword + 14        // #pure        41
-tkBegin         = 165   // = tkKeyword + 15        // begin        47
-tkBreak         = 166   // = tkKeyword + 16        // break        4D
-tkConst         = 167   // = tkKeyword + 17        // const        53
-tkFalse         = 168   // = tkKeyword + 18        // false        59
-tkUntil         = 169   // = tkKeyword + 19        // until        5F
-tkWhile         = 170   // = tkKeyword + 20        // while        65
+tkGoto          = 53   // = tkKeyword + 13        // #goto        3B KeywordOfs[5]
+tkPure          = 54   // = tkKeyword + 14        // #pure        41
+tkBegin         = 55   // = tkKeyword + 15        // begin        47
+tkBreak         = 56   // = tkKeyword + 16        // break        4D
+tkConst         = 57   // = tkKeyword + 17        // const        53
+tkFalse         = 58   // = tkKeyword + 18        // false        59
+tkUntil         = 59   // = tkKeyword + 19        // until        5F
+tkWhile         = 60   // = tkKeyword + 20        // while        65
 
-tkLabel         = 171   // = tkKeyword + 21        // #label       6B
-tkImport        = 172   // = tkKeyword + 22        // import       72
-tkModule        = 173   // = tkKeyword + 23        // module       79
-tkNumber        = 174   // = tkKeyword + 24        // number       80
-tkReturn        = 175   // = tkKeyword + 25        // return       87
-tkString        = 176   // = tkKeyword + 26        // string       8E
+tkLabel         = 61   // = tkKeyword + 21        // #label       6B KeywordOfs[6]
+tkImport        = 62   // = tkKeyword + 22        // import       72
+tkModule        = 63   // = tkKeyword + 23        // module       79
+tkNumber        = 64   // = tkKeyword + 24        // number       80
+tkReturn        = 65   // = tkKeyword + 25        // return       87
+tkString        = 66   // = tkKeyword + 26        // string       8E
 
-tkPacked        = 177   // = tkKeyword + 27        // #packed      95
-tkPublic        = 178   // = tkKeyword + 28        // #public      9D
-tkBoolean       = 179   // = tkKeyword + 29        // boolean      A5
+tkPacked        = 67   // = tkKeyword + 27        // #packed      95 KeywordOfs[7]
+tkPublic        = 68   // = tkKeyword + 28        // #public      9D
+tkBoolean       = 69   // = tkKeyword + 29        // boolean      A5
 
-tkForward       = 180   // = tkKeyword + 30        // #forward     AD
-tkContinue      = 181   // = tkKeyword + 31        // continue     B6
+tkForward       = 70   // = tkKeyword + 30        // #forward     AD KeywordOfs[8]
+tkContinue      = 71   // = tkKeyword + 31        // continue     B6
 
-tkProcedure     = 182   // = tkKeyword + 32        // procedure    BF
+tkProcedure     = 72   // = tkKeyword + 32        // procedure    BF KeywordOfs[9]
 
 
 
@@ -971,6 +981,23 @@ begin
   PosixWrite(2, DigitBuf16[i ..], 16 - i)
 end
 
+procedure PrintFromList(n: number, List: []byte)
+begin
+  i : number := 0
+  while n <> 0 begin
+    while List[i] <> 32 begin
+      i := i + 1
+    end
+    i := i + 1
+    n := n - 1
+  end
+  j : number := i
+  while List[j] <> 32 begin
+    j := j + 1
+  end
+  PosixWrite(2, List[i ..], j-i)
+end
+
 procedure NextChar()
 begin
   Ch := PosixGetChar()
@@ -989,22 +1016,25 @@ end
 procedure ErrorMsg(e: number)
 begin
   if e >= erExpected begin
-    if e=erExpected+tkCloseSquare begin PosixWrite(2, '`)` expected', 14) return end
-
-    if e=erExpected+tkDot       begin PosixWrite(2, '`.` expected', 14) return end
-    if e=erExpected+tkColon     begin PosixWrite(2, '`:` expected', 14) return end
-    if e=erExpected+tkAssign    begin PosixWrite(2, '`:=` expected', 15) return end
-
-    if e=erExpected+tkString    begin PosixWrite(2, '`string` expected', 19) return end
-    if e=erExpected+tkBegin     begin PosixWrite(2, '`begin` expected', 18) return end
-    if e=erExpected+tkNumber    begin PosixWrite(2, '`number` expected', 19) return end
-    if e=erExpected+tkByte      begin PosixWrite(2, '`byte` expected', 17) return end
-
-    //if e=erExpected+tk begin PosixWrite(2, '`` expected', 13) return end
+    PosixWrite(2, '`', 1)
+    t : number := e - erExpected
+    if t >= tkDot begin
+      if t < tkKeyword begin
+        PrintFromList(t - tkDot, DelimiterList)
+      else
+        PrintFromList(t - tkKeyword, KeywordList)
+      end
+      PosixWrite(2, '` expected', 12)
+      return
+    end
   end
 
   if e=erBufferOverflow         begin PosixWrite(2, 'buffer overflow', 15) return end
-  if e=erInvalidCharacter       begin PosixWrite(2, 'invalid character', 17) return end
+  if e=erInvalidCharacter       begin
+    PosixWrite(2, 'invalid character no. ', 22)
+    PrintNumber(Ch, 0)
+    return 
+  end
   if e=erIdentifierExpected     begin PosixWrite(2, 'identifier expected', 19) return end
   if e=erUnknownIdentifier      begin PosixWrite(2, 'unknown identifier', 18) return end
   if e=erFunctionRedefined      begin PosixWrite(2, 'function rededined', 18) return end
@@ -1032,17 +1062,23 @@ begin
   ErrorCol : number := LineCol - 1
   if Token = tkIdentifier begin
     ErrorCol := ErrorCol - TokenInt
-  else
-    ErrorCol := ErrorCol - 1
+  else 
+    if Token >= tkKeyword begin
+      ErrorCol := ErrorCol - TokenInt
+    else
+      ErrorCol := ErrorCol - 1
+    end
   end
 
   PosixWrite(2, ''1B'[1;37m', 7) // white
-  PosixWrite(2, 'filename.sch', 12)
+  PosixWrite(2, 'stdin', 5)
   PosixWrite(2, ':', 1)
   PrintNumber(LineNo, 0);
   PosixWrite(2, ':', 1)
   PrintNumber(LineCol, 0);
-  PosixWrite(2, ' '1B'[1;31merror: '1B'[0m', 19)
+  PosixWrite(2, ' '1B'[1;31merror E', 15)
+  PrintNumber(ErrorNo, 0)
+  PosixWrite(2, ': '1B'[0m', 6)
   ErrorMsg(ErrorNo)
   PosixWrite(2, ''0D0A, 2)
   PrintNumber(LineNo, 5);
@@ -1102,7 +1138,6 @@ end
 
 procedure ReturnToken() : number
 begin
-
   TokenSize := SymsHead - CodePos
   if TokenSize < 1024 begin
     Error(erBufferOverflow)
@@ -1111,8 +1146,8 @@ begin
   TokenBuf  := Buf[CodePos + 256 ..]
   TokenInt  := 0
 
-
   if Ch > 128 begin
+    LineCol := LineCol + 1
     Error(erInvalidCharacter)
   end
   Class : number := ClassifyChar[Ch]
@@ -1146,6 +1181,7 @@ begin
     return tkEOF;
   end
   if Class = ccInvalidChar begin
+    LineCol := LineCol + 1
     Error(erInvalidCharacter)
   end
 
@@ -1156,7 +1192,7 @@ begin
       NextChar()
       Class := ClassifyChar[Ch]
     end
-    return tkNumericLiteral
+    return tkIntegerLiteral
   end
 
   // identifier or keyword
@@ -1244,7 +1280,7 @@ begin
   // single char delimiter
   if Class <> ccMultiChar begin
     NextChar()
-    return Class
+    return Class - 48 
   end
 
   // remaining: possible multi char delimiter
@@ -1320,7 +1356,7 @@ end
 procedure GetToken()
 begin
   Token := ReturnToken()
-  //PrintNumber(Token, 5)
+//  PrintNumber(Token, 5)
 end
 
 
@@ -1420,10 +1456,35 @@ end
 
 procedure ParseFactor() #forward
 
+// return 0 if t is not an operator token
+
+
+procedure IsOperator(t: number) : number
+begin
+  if Token < tkShiftL begin
+    return 0
+  end
+  if Token > tkMod begin
+    return 0
+  end
+  return 1
+end
+
+procedure IsRelation(t: number) : number
+begin
+  if Token < tkEQ begin
+    return 0
+  end
+  if Token > tkLE begin
+    return 0
+  end
+  return 1
+end
+
 procedure ParseOperation()
 begin
   ParseFactor()
-  while (Token & 240) = 64 begin
+  while IsOperator(Token) <> 0 begin
     EmitPush()
     Op : number := Token & 15
     GetToken()
@@ -1435,7 +1496,7 @@ end
 procedure ParseExpression()
 begin
   ParseOperation()
-  while (Token & 248) = 80 begin
+  while IsRelation(Token) <> 0 begin
     EmitPush()
     Op : number := Token & 15
     GetToken()
@@ -1448,7 +1509,7 @@ procedure ParseCondition() : number
 begin
   ParseOperation()
   EmitPush()
-  if (Token & 248) = 80 begin
+  if (Token & 248) = 32 begin
     Cond : number := Token & 15
     GetToken()
     ParseOperation()
@@ -1493,7 +1554,7 @@ begin
     Expect(tkCloseRound)
     return
   end
-  if Token = tkNumericLiteral begin
+  if Token = tkIntegerLiteral begin
     EmitNumber(TokenInt)
     GetToken()
     return
@@ -1745,7 +1806,7 @@ begin
         ExpectType()
       end
       if Accept(tkEQ) <> 0 begin
-        if Token = tkNumericLiteral begin
+        if Token = tkIntegerLiteral begin
           Buf[SymsHead + 4] := tyGlobalConstant
           SetBuf32(SymsHead, TokenInt)
           GetToken()
