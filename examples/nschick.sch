@@ -26,12 +26,12 @@ erExpected              = 200
 
 
 
-// symbol types
-tyGlobalConstant        = 70    // 32 bit number
-tyGlobalVariable        = 71
-tyUndefinedProcedure    = 72
-tyDefinedProcedure      = 73
-tyLocalVariable         = 74    // or procedure parameter
+// symbol class
+scGlobalConstant        = 70    // 32 bit number
+scGlobalVariable        = 71
+scUndefinedProcedure    = 72
+scDefinedProcedure      = 73
+scLocalVariable         = 74    // or procedure parameter
 
 
 
@@ -290,9 +290,9 @@ begin
   EmitBinaryFunc(AlignedLen - Len, ''00000000)
 end
 
-procedure EmitStore(SymType: number, Ofs: number)
+procedure EmitStore(SymClass: number, Ofs: number)
 begin
-  if SymType = tyLocalVariable begin
+  if SymClass = scLocalVariable begin
     if Ofs < 13 begin
       // max 13 local variables in registers
       if LastInsnType > 7 begin
@@ -308,21 +308,21 @@ begin
     // otherwise fall back to stack
   end
   Emit32(73763 +
-        ((SymType & 1) << 15) +
+        ((SymClass & 1) << 15) +
         (RegPos << 20) +
         ((Ofs & 1016   ) << 22) +       // bits 31..25 = ofs[9..3]
         ((Ofs & 7      ) <<  9))        // bits 11..7  = ofs[2..0] 0 0
     // SW REG[RegPos], (ofs+1)(REG[2+Global])
 end
 
-procedure EmitLoad(SymType: number, Ofs: number)
+procedure EmitLoad(SymClass: number, Ofs: number)
 begin
-  if SymType = tyGlobalConstant begin
+  if SymClass = scGlobalConstant begin
     EmitNumber(Ofs)
     return
   end
 
-  if SymType = tyLocalVariable begin
+  if SymClass = scLocalVariable begin
     if Ofs < 13 begin
       // max 13 local variables in registers
       EmitISDO(0, LocalReg[Ofs], RegPos, 19)
@@ -332,7 +332,7 @@ begin
     end
     // otherwise fall back to stack
   end
-  EmitISDO(Ofs << 2, SymType & 1, RegPos, 73731)
+  EmitISDO(Ofs << 2, SymClass & 1, RegPos, 73731)
     // LW REG[RegPos], Ofs(REG[2+Global])
   LastInsnType := itPushMem
 end
@@ -435,10 +435,10 @@ begin
   LastInsnType := itComparison
 end
 
-procedure EmitIndexPush(SymType: number, Ofs: number)
+procedure EmitIndexPush(SymClass: number, Ofs: number)
 begin
   EmitPush()
-  EmitLoad(SymType, Ofs)
+  EmitLoad(SymClass, Ofs)
   EmitOperation(opAdd)
   EmitPush()
   LastInsnType := itArithOp
@@ -452,7 +452,7 @@ begin
     // 00B50023  SB A1,0(A0)
 end
 
-procedure EmitIndexLoadArray(SymType: number, Ofs: number)
+procedure EmitIndexLoadArray(SymClass: number, Ofs: number)
 begin
   Imm : number := 0
   Rs  : number := RegPos
@@ -462,18 +462,18 @@ begin
     Rs := LocalReg[Ofs]
 
     // dublicate code because there is no logical or
-    if SymType <> tyLocalVariable begin
-      EmitLoad(SymType, Ofs)
+    if SymClass <> scLocalVariable begin
+      EmitLoad(SymClass, Ofs)
       Rs := RegPos
     else
       if Ofs >= 13 begin
-        EmitLoad(SymType, Ofs)
+        EmitLoad(SymClass, Ofs)
         Rs := RegPos
       end
     end
 
   else
-    EmitIndexPush(SymType, Ofs)
+    EmitIndexPush(SymClass, Ofs)
     RegPos := RegPos - 1
   end
   EmitISDO(Imm, Rs, RegPos, 16387)
@@ -572,7 +572,7 @@ begin
     MaxLocals := n
   end
   if Init <> 0 begin // set initial value
-    EmitStore(tyLocalVariable, n)
+    EmitStore(scLocalVariable, n)
   end
   return n
 end
@@ -603,7 +603,7 @@ begin
   EmitPush()
 end
 
-procedure EmitCall(Ofs: number, Pop: number, Save: number)
+procedure EmitCall(Ofs: number, Pop: number, Save: number) : number
 begin
   r : number := CodePos
   Emit32(InsnJAL(1, Ofs - CodePos))
@@ -616,7 +616,7 @@ begin
 
     RegPos := 10
     while RegPos < Save begin
-      EmitLoad(tyLocalVariable, NumLocals)
+      EmitLoad(scLocalVariable, NumLocals)
       RegPos := RegPos + 1
       NumLocals := NumLocals - 1
     end
@@ -956,6 +956,7 @@ TokenInt        : number
 TokenSize       : number
 TokenBuf        : []byte
 SymsHead        : number
+StackHead       : number
 
 
 procedure PrintNumber(n: number, Fill: number)
@@ -1037,7 +1038,7 @@ begin
   end
   if e=erIdentifierExpected     begin PosixWrite(2, 'identifier expected', 19) return end
   if e=erUnknownIdentifier      begin PosixWrite(2, 'unknown identifier', 18) return end
-  if e=erFunctionRedefined      begin PosixWrite(2, 'function rededined', 18) return end
+  if e=erFunctionRedefined      begin PosixWrite(2, 'function redefined', 18) return end
   if e=erTypeExpected           begin PosixWrite(2, 'type expected', 13) return end
   if e=erDeclarationExpected    begin PosixWrite(2, 'declaration expected', 20) return end
   if e=erStatementExpected      begin PosixWrite(2, 'statement expected', 18) return end
@@ -1365,7 +1366,56 @@ end
 
 /**********************************************************************
  * Symbol Management
+ **********************************************************************
+
+The object stack grows from the highest address in Buf downwards and contains
+two different kind of objects: symbols and types
+
+SymsHead  first symbol
+StackHead current stack position (<>SymsHead if types were added recently)
+
+Symbol
+------
+0...3   Next (index in Buf)
+4...7   Addr                    scConst: constant value
+8...11  Type (index in Buf)     scModule: SubSymbols
+12      Class
+13      NameLen
+14...   NameStr
+
+Type
+----
+        tfSubRange tfEnum  tfRecord tfPointer tfArray
+0...3   Low        SymList SymList  BaseType  BaseType
+4...7   High       -       -        -         Length
+8...11  size in bytes
+12      Form
+
  **********************************************************************/
+
+// form of a type
+tfBoolean       = 1
+tfByte          = 3
+tfUInt16        = 4
+tfNumber        = 5
+tfUInt64        = 6
+tfUInt128       = 7
+tfInt8          = 11
+tfInt16         = 12
+tfInt32         = 13
+tfInt64         = 14
+tfInt128        = 15
+tfFloat32       = 21
+tfReal          = 22
+tfFloat128      = 23
+
+tfSubRange      = 24    // low, high
+tfEnum          = 25    // list of symbols (without type)
+tfRecord        = 26    // list of symbols (with type)
+tfPointer       = 27    // base type
+tfVarArray      = 28    // base type
+tfArray         = 29    // base type, length
+
 
 procedure SymLookup() : number
 begin
@@ -1374,41 +1424,45 @@ begin
   end
   Sym : number := SymsHead
   while Sym < BufSize begin
-    Len : number := Buf[Sym + 5]
+    Len : number := Buf[Sym + 13]
     if Len = TokenInt begin
-      if TokenCmp(Buf[Sym+6 ..], Len) <> 0 begin
+      if TokenCmp(Buf[Sym + 14 ..], Len) <> 0 begin
         return Sym
       end
     end
-    Sym := Sym + Len + 6
+    Sym := GetBuf32(Sym) // next list entry
   end
   return 0
 end
 
-procedure SymAppend(Addr: number, Type: number)
+procedure SymAppend(Addr: number, SymClass: number /*TypePtr: number*/)
 begin
   i : number := TokenInt
-  SymsHead := SymsHead - TokenInt - 6
-  s : number := SymsHead
+  NewSym : number := StackHead - TokenInt - 14
+  StackHead := NewSym
 
-  SetBuf32(s, Addr)
-  Buf[s+4] := Type
-  Buf[s+5] := i
+  SetBuf32(NewSym,     SymsHead)
+  SetBuf32(NewSym + 4, Addr)
+  //SetBuf32(NewSym + 8, TypePtr)
+  Buf[NewSym + 12] := SymClass
+  Buf[NewSym + 13] := i
 
   // copy backwards in case the token and the symbol table overlap
   while i <> 0 begin
     i := i - 1
-    Buf[s+6+i] := TokenBuf[i]
+    Buf[NewSym + 14 + i] := TokenBuf[i]
   end
+  SymsHead := NewSym
+
   GetToken()
 end
 
 procedure SymFix(Sym: number, FuncPos: number)
 begin
-  Addr : number := GetBuf32(Sym)
+  Addr : number := GetBuf32(Sym + 4)
 
-  if Buf[Sym+4] <> tyUndefinedProcedure begin
-    Error(erFunctionRedefined)
+  if Buf[Sym + 12] <> scUndefinedProcedure begin
+    Error(erFunctionRedefined) // move cursor back one token to tkIdentifier
   end
 
   while Addr <> 0 begin
@@ -1416,8 +1470,8 @@ begin
     EmitFixCall(Addr, FuncPos)
     Addr := Next
   end
-  SetBuf32(Sym, FuncPos)
-  Buf[Sym+4] := tyDefinedProcedure
+  SetBuf32(Sym + 4, FuncPos)
+  Buf[Sym + 12] := scDefinedProcedure
 end
 
 
@@ -1521,7 +1575,7 @@ begin
   end
 end
 
-procedure ParseCall(Sym: number, Type: number, Ofs: number)
+procedure ParseCall(Sym: number, SymClass: number, Ofs: number)
 begin
   ParamNo : number := 0
   Save    : number := EmitPreCall()
@@ -1538,11 +1592,11 @@ begin
   end
 
   Link : number := EmitCall(Ofs, ParamNo, Save)
-  if Type = tyUndefinedProcedure begin
+  if SymClass = scUndefinedProcedure begin
     SetBuf32(Link, Ofs)
       // Overwrite the call to an undefined address with a link to the rest of
       // the linked list of calls to this not yet defined function
-    SetBuf32(Sym, Link)
+    SetBuf32(Sym + 4, Link)
   end
 end
 
@@ -1583,11 +1637,11 @@ begin
     Error(erUnknownIdentifier)
   end
   GetToken()
-  Type : number := Buf[Sym + 4]
-  Ofs : number := GetBuf32(Sym)
+  SymClass : number := Buf[Sym + 12]
+  Ofs : number := GetBuf32(Sym + 4)
 
   if Accept(tkOpenRound) <> 0 begin // '('
-    ParseCall(Sym, Type, Ofs)
+    ParseCall(Sym, SymClass, Ofs)
     return
   end
   if Accept(tkOpenSquare) <> 0 begin // '['
@@ -1595,19 +1649,19 @@ begin
     if Accept(tkDots) <> 0 begin // '..'
       Expect(tkCloseSquare)
       EmitPush()
-      EmitLoad(Type, Ofs)
+      EmitLoad(SymClass, Ofs)
       EmitOperation(opAdd)
     else
       Expect(tkCloseSquare)
-      EmitIndexLoadArray(Type, Ofs)
+      EmitIndexLoadArray(SymClass, Ofs)
     end
     return
   end
 
-  if Type = tyGlobalConstant begin // constant
+  if SymClass = scGlobalConstant begin // constant
     EmitNumber(Ofs)
   else // variable
-    EmitLoad(Type, Ofs)
+    EmitLoad(SymClass, Ofs)
   end
 end
 
@@ -1690,7 +1744,7 @@ begin
   // declaration of variable
   if Sym = 0 begin
     // unknown identifier => must be declaration of variable
-    SymAppend(0 /* don't care */, tyLocalVariable)
+    SymAppend(0 /* don't care */, scLocalVariable)
       // Add a local variable to the symbol table. Must be done before further
       // parsing, otherwise the name of the identifier in TokenBuf is lost.
       // But at this point the address is unknown and will be filled later with
@@ -1699,20 +1753,20 @@ begin
     ExpectType()
     if Accept(tkAssign) <> 0 begin
       ParseExpression()
-      SetBuf32(SymsHead, EmitLocalVar(1))
+      SetBuf32(SymsHead+4, EmitLocalVar(1))
     else
-      SetBuf32(SymsHead, EmitLocalVar(0))
+      SetBuf32(SymsHead+4, EmitLocalVar(0))
     end
     return
   end
 
-  Type : number := Buf[Sym + 4]
-  Ofs  : number := GetBuf32(Sym)
+  SymClass : number := Buf[Sym + 12]
+  Ofs      : number := GetBuf32(Sym+4)
   GetToken()
 
   // procedure call
   if Accept(tkOpenRound) <> 0 begin
-    ParseCall(Sym, Type, Ofs)
+    ParseCall(Sym, SymClass, Ofs)
     return
   end
 
@@ -1721,7 +1775,7 @@ begin
     ParseExpression()
     Expect(tkCloseSquare)
     Expect(tkAssign)
-    EmitIndexPush(Type, Ofs)
+    EmitIndexPush(SymClass, Ofs)
     ParseExpression()
     EmitPopStoreArray()
     return
@@ -1730,7 +1784,7 @@ begin
   // assignmnet to variable
   if Accept(tkAssign) <> 0 begin
     ParseExpression()
-    EmitStore(Type, Ofs)
+    EmitStore(SymClass, Ofs)
     return
   end
 
@@ -1739,9 +1793,9 @@ begin
   if Token = tkColon begin
     // Fake the token buffer for sym_append(), because it was cleared when the
     // the following token ':' was parsed.
-    TokenBuf := Buf[Sym+6 ..]
-    TokenInt := Buf[Sym+5]
-    SymAppend(EmitLocalVar(0), tyLocalVariable)
+    TokenBuf := Buf[Sym+14 ..]
+    TokenInt := Buf[Sym+13]
+    SymAppend(EmitLocalVar(0), scLocalVariable)
     ExpectType()
     return
   end
@@ -1755,11 +1809,12 @@ begin
   if Sym <> 0 begin
     GetToken()
   else
-    SymAppend(0 /* don't care */, tyUndefinedProcedure)
+    SymAppend(0 /* don't care */, scUndefinedProcedure)
     Sym := SymsHead
   end
 
-  RestoreHead : number := SymsHead
+  RestoreSymsHead  : number := SymsHead
+  RestoreStackHead : number := StackHead
   i : number := 0
   Expect(tkOpenRound)
   while Accept(tkCloseRound) = 0 begin
@@ -1767,7 +1822,7 @@ begin
     if Token <> tkIdentifier begin
       Error(erIdentifierExpected)
     end
-    SymAppend(i, tyLocalVariable) // parameters are local variables
+    SymAppend(i, scLocalVariable) // parameters are local variables
     Expect(tkColon)
     ExpectType()
     if Accept(tkComma) = 0 begin
@@ -1790,7 +1845,8 @@ begin
     ParseScope()
     EmitFuncEnd()
   end
-  SymsHead := RestoreHead // remove local variables from symbol table
+  SymsHead  := RestoreSymsHead  // remove local variables from symbol table
+  StackHead := RestoreStackHead
 end
 
 procedure ParseDeclaration()
@@ -1801,22 +1857,22 @@ begin
 
   while Accept(tkBegin) = 0 begin // while NOT begin
     if Token = tkIdentifier begin
-      SymAppend(EmitGlobalVar(), tyGlobalVariable)
+      SymAppend(EmitGlobalVar(), scGlobalVariable)
       if Accept(tkColon) <> 0 begin
         ExpectType()
       end
       if Accept(tkEQ) <> 0 begin
         if Token = tkIntegerLiteral begin
-          Buf[SymsHead + 4] := tyGlobalConstant
-          SetBuf32(SymsHead, TokenInt)
+          Buf[SymsHead + 12] := scGlobalConstant
+          SetBuf32(SymsHead + 4, TokenInt)
           GetToken()
         else
           if Token = tkStringLiteral begin
             Addr  : number := EmitBinaryFunc(TokenInt, TokenBuf)
             Align : number := TokenInt & 3
             EmitBinaryFunc(4 - Align, ''00000000)
-            Buf[SymsHead + 4] := tyGlobalConstant
-            SetBuf32(SymsHead, Addr + BaseAddr)
+            Buf[SymsHead + 12] := scGlobalConstant
+            SetBuf32(SymsHead + 4, Addr + BaseAddr)
             GetToken()
           else
             Error(erConstantExpected)
@@ -1845,6 +1901,7 @@ begin
   BufSize       := 65536
   Buf           := BrkAlloc(BufSize + 1024 + 16)
   SymsHead      := BufSize
+  StackHead     := BufSize
   LineNo        := 1
   LineCol       := 0
   CodePos       := 0
