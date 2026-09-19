@@ -29,10 +29,21 @@ CC=${CC:-gcc}
 QEMU_RV32=${QEMU_RV32:-qemu-riscv32}
 OBJDUMP_RV32=${OBJDUMP_RV32:-riscv64-linux-gnu-objdump}
 
-esc_green="\033[32m"
-esc_red="\033[1;31m"
-esc_orange="\033[33m"
-esc="\033[0m"
+
+if [ -t 1 ]
+then
+    # enable colours if stdout is a TTY
+    esc_green="\033[32m"
+    esc_red="\033[1;31m"
+    esc_orange="\033[33m"
+    esc="\033[0m"
+else
+    # no colours if stdout is redirected to a file
+    esc_green=""
+    esc_red=""
+    esc_orange=""
+    esc=""
+fi
 
 
 

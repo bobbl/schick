@@ -32,7 +32,7 @@ scGlobalVariable        = 71
 scUndefinedProcedure    = 72
 scDefinedProcedure      = 73
 scLocalVariable         = 74    // or procedure parameter
-
+scType                  = 75
 
 
 
@@ -106,6 +106,55 @@ begin
   end
 end
 
+// return 0 if FileDesc is a TTY
+procedure PosixNotATTY(FileDesc: number) : number
+begin
+  #asm
+    // file descriptor is already in a0
+
+    .string ''130101FC  // add sp, sp, -64      // memory for termios
+    .string ''13060100  // mv a2, sp
+
+    .string ''B7550000  // lui a1, 5
+    .string ''93853541  // add a1, a1, 0x413
+        // together: li a1, 0x5413 = TIOCGWINSZ
+        //                           Terminal IO Control Get WINdow SiZe
+        //                  0x5401 = TCGETS also works
+
+    .string ''9308D001  // li a7, 29 # sys_ioctl
+    .string ''73000000  // ecall
+
+    .string ''13010104  // add sp, sp, 64
+  end
+end
+
+procedure ColourWhite()
+begin
+  if PosixNotATTY(2) = 0 begin
+    PosixWrite(2, ''1B'[1;37m', 7)
+  end
+end
+
+procedure ColourBrightRed()
+begin
+  if PosixNotATTY(2) = 0 begin
+    PosixWrite(2, ''1B'[1;31m', 7)
+  end
+end
+
+procedure ColourBrightGreen()
+begin
+  if PosixNotATTY(2) = 0 begin
+    PosixWrite(2, ''1B'[1;32m', 7)
+  end
+end
+
+procedure ColourBack()
+begin
+  if PosixNotATTY(2) = 0 begin
+    PosixWrite(2, ''1B'[0m', 4)
+  end
+end
 
 
 
@@ -1071,15 +1120,17 @@ begin
     end
   end
 
-  PosixWrite(2, ''1B'[1;37m', 7) // white
+  ColourWhite()
   PosixWrite(2, 'stdin', 5)
   PosixWrite(2, ':', 1)
   PrintNumber(LineNo, 0);
   PosixWrite(2, ':', 1)
   PrintNumber(LineCol, 0);
-  PosixWrite(2, ' '1B'[1;31merror E', 15)
+  ColourBrightRed()
+  PosixWrite(2, ' error E', 8)
   PrintNumber(ErrorNo, 0)
-  PosixWrite(2, ': '1B'[0m', 6)
+  PosixWrite(2, ': ', 2)
+  ColourBack()
   ErrorMsg(ErrorNo)
   PosixWrite(2, ''0D0A, 2)
   PrintNumber(LineNo, 5);
@@ -1107,9 +1158,9 @@ begin
     i := i + 1
   end
   PosixWrite(2, LineBuf, ErrorCol)
-  PosixWrite(2, ''1B'[1;32m^'1B'[0m', 12)
-
-  PosixWrite(2, ''0D0A, 2)
+  ColourBrightGreen()
+  PosixWrite(2, '^'0D0A, 3)
+  ColourBack()
   PosixExit(ErrorNo)
 end
 
@@ -1385,9 +1436,9 @@ Symbol
 
 Type
 ----
-        tfSubRange tfEnum  tfRecord tfPointer tfArray
-0...3   Low        SymList SymList  BaseType  BaseType
-4...7   High       -       -        -         Length
+        tfSubRange tfEnum  tfRecord tfPointer tfArray  tfProcedure
+0...3   Low        SymList SymList  -         Length   ParamList
+4...7   High       -       -        BaseType  BaseType ReturnType (can be a record)
 8...11  size in bytes
 12      Form
 
@@ -1415,6 +1466,7 @@ tfRecord        = 26    // list of symbols (with type)
 tfPointer       = 27    // base type
 tfVarArray      = 28    // base type
 tfArray         = 29    // base type, length
+tfProcedure     = 30    // list of param types, list of return types
 
 
 procedure SymLookup() : number
@@ -1438,7 +1490,7 @@ end
 procedure SymAppend(Addr: number, SymClass: number /*TypePtr: number*/)
 begin
   i : number := TokenInt
-  NewSym : number := StackHead - TokenInt - 14
+  NewSym : number := (StackHead - TokenInt - 14) & 4294967292 /* ~3 align to 32 bit */
   StackHead := NewSym
 
   SetBuf32(NewSym,     SymsHead)
@@ -1474,6 +1526,37 @@ begin
   Buf[Sym + 12] := scDefinedProcedure
 end
 
+// add a type to the sympol table and return its index in Buf
+procedure TypeAppend(Form: number, SymList: number, BaseType: number, Size: number) : number
+begin
+  r : number := (StackHead - 16) & 4294967292 /* ~3 align to 32 bit*/
+  StackHead := r
+  SetBuf32(r, SymList)
+  SetBuf32(r + 4, BaseType)
+  SetBuf32(r + 8, Size)
+  Buf[r + 12] := Form
+  return r
+end
+
+procedure TypeSymAppend(Name: []byte, Len: number, Form: number)
+begin
+  Type   : number := TypeAppend(Form, 0, 0, 0, 0)
+  NewSym : number := (StackHead - Len - 14) & 4294967292 /* ~3 align to 32 bit */
+  StackHead := NewSym
+
+  SetBuf32(NewSym,     SymsHead)
+  SetBuf32(NewSym + 4, 0 /* don't care for type */)
+  SetBuf32(NewSym + 8, Type)
+  Buf[NewSym + 12] := scType
+  Buf[NewSym + 13] := Len
+
+  i : number := 0
+  while i < Len begin
+    Buf[NewSym + 14 + i] := Name[i]
+    i := i + 1
+  end
+  SymsHead := NewSym
+end
 
 
 
@@ -1827,8 +1910,8 @@ begin
     ExpectType()
     if Accept(tkComma) = 0 begin
 
-      // cannot use Expect() directly, because Token may not be changed
-      // to exit the loop
+      // Cannot use Expect() directly, because Token may not be changed to exit
+      // the loop. Therefore call Expect() only, if sure there is an error.
       if Token <> tkCloseRound begin
         Expect(tkCloseRound)
       end
