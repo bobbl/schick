@@ -942,9 +942,9 @@ tkKeyword       = 40
 
 
 
-KeywordList  = 'if end for nil var #asm byte char elif else real true type #goto #pure begin break const false until while #label import module number return string #packed #public boolean #forward continue procedure'
-KeywordOfs   = '..'0003133B6B95ADBFC9
-KeywordToken = '..'0001050D151B1E2021
+KeywordList  = 'if end for nil var #asm .... .... elif else .... true type #goto #pure begin break const false until while #label import module ...... return string #packed #public #discard #forward continue procedure'
+KeywordOfs   = '..'0003133B6B95A5C0CA
+KeywordToken = '..'0001050D151B1D2021
 
 // token          value                            keyword       offset
 tkIf            = 40   // = tkKeyword + 0         // if           00 KeywordOfs[2]
@@ -955,11 +955,11 @@ tkNil           = 43   // = tkKeyword + 3         // nil          0B
 tkVar           = 44   // = tkKeyword + 4         // var          0F
 
 tkAsm           = 45   // = tkKeyword + 5         // #asm         13 KeywordOfs[4]
-tkByte          = 46   // = tkKeyword + 6         // byte         18
-tkChar          = 47   // = tkKeyword + 7         // char         1D
+//tkByte          = 46   // = tkKeyword + 6         // byte         18
+//tkChar          = 47   // = tkKeyword + 7         // char         1D
 tkElif          = 48   // = tkKeyword + 8         // elif         22
 tkElse          = 49   // = tkKeyword + 9         // else         27
-tkReal          = 50   // = tkKeyword + 10        // real         2C
+//tkReal          = 50   // = tkKeyword + 10        // real         2C
 tkTrue          = 51   // = tkKeyword + 11        // true         31
 tkType          = 52   // = tkKeyword + 12        // type         36
 
@@ -975,18 +975,18 @@ tkWhile         = 60   // = tkKeyword + 20        // while        65
 tkLabel         = 61   // = tkKeyword + 21        // #label       6B KeywordOfs[6]
 tkImport        = 62   // = tkKeyword + 22        // import       72
 tkModule        = 63   // = tkKeyword + 23        // module       79
-tkNumber        = 64   // = tkKeyword + 24        // number       80
+//tkNumber        = 64   // = tkKeyword + 24        // number       80
 tkReturn        = 65   // = tkKeyword + 25        // return       87
 tkString        = 66   // = tkKeyword + 26        // string       8E
 
 tkPacked        = 67   // = tkKeyword + 27        // #packed      95 KeywordOfs[7]
 tkPublic        = 68   // = tkKeyword + 28        // #public      9D
-tkBoolean       = 69   // = tkKeyword + 29        // boolean      A5
 
-tkForward       = 70   // = tkKeyword + 30        // #forward     AD KeywordOfs[8]
-tkContinue      = 71   // = tkKeyword + 31        // continue     B6
+tkDiscard       = 69   // = tkKeyword + 29        // #discard     A5 KeywordOfs[8]
+tkForward       = 70   // = tkKeyword + 30        // #forward     AE
+tkContinue      = 71   // = tkKeyword + 31        // continue     B7
 
-tkProcedure     = 72   // = tkKeyword + 32        // procedure    BF KeywordOfs[9]
+tkProcedure     = 72   // = tkKeyword + 32        // procedure    C0 KeywordOfs[9]
 
 
 
@@ -1468,7 +1468,6 @@ tfVarArray      = 28    // base type
 tfArray         = 29    // base type, length
 tfProcedure     = 30    // list of param types, list of return types
 
-
 procedure SymLookup() : number
 begin
   if Token <> tkIdentifier begin
@@ -1487,7 +1486,7 @@ begin
   return 0
 end
 
-procedure SymAppend(Addr: number, SymClass: number /*TypePtr: number*/)
+procedure SymAppend(Addr: number, SymClass: number) : number
 begin
   i : number := TokenInt
   NewSym : number := (StackHead - TokenInt - 14) & 4294967292 /* ~3 align to 32 bit */
@@ -1507,6 +1506,7 @@ begin
   SymsHead := NewSym
 
   GetToken()
+  return NewSym
 end
 
 procedure SymFix(Sym: number, FuncPos: number)
@@ -1524,6 +1524,12 @@ begin
   end
   SetBuf32(Sym + 4, FuncPos)
   Buf[Sym + 12] := scDefinedProcedure
+end
+
+procedure SymSetClassAddr(Sym: number, SymClass: number, Addr: number)
+begin
+  Buf[Sym + 12] := SymClass
+  SetBuf32(Sym + 4, Addr)
 end
 
 // add a type to the sympol table and return its index in Buf
@@ -1558,6 +1564,12 @@ begin
   SymsHead := NewSym
 end
 
+procedure SymInit()
+begin
+  TypeSymAppend('boolean', 7, tfBoolean)
+  TypeSymAppend('byte', 4, tfByte)
+  TypeSymAppend('number', 6, tfNumber)
+end
 
 
 
@@ -1578,16 +1590,6 @@ procedure Expect(t: number)
 begin
   if Accept(t) = 0 begin
     Error(erExpected + t) // Error: specific token expected
-  end
-end
-
-procedure ExpectType()
-begin
-  if Accept(tkOpenSquare) <> 0 begin
-    Expect(tkCloseSquare)
-    Expect(tkByte)
-  else
-    Expect(tkNumber)
   end
 end
 
@@ -1748,6 +1750,33 @@ begin
   end
 end
 
+// recursevly create type data structure
+procedure ParseType() : number
+begin
+  BaseType : number
+  if Accept(tkOpenSquare) <> 0 begin
+    Expect(tkCloseSquare)
+    BaseType := ParseType()
+    return TypeAppend(tfVarArray, 0, BaseType, 8)
+  end
+  if Accept(tkArrow) <> 0 begin
+    BaseType := ParseType()
+    return TypeAppend(tfPointer, 0, BaseType, 8)
+  end
+  if Token <> tkIdentifier begin
+    Error(erTypeExpected)
+  end
+  Sym : number := SymLookup()
+  if Sym = 0 begin
+    Error(erTypeExpected)
+  end
+  if Buf[Sym + 12] <> scType begin
+    Error(erTypeExpected)
+  end
+  GetToken()
+  return GetBuf32(Sym + 8)
+end
+
 procedure ParseStatement() #forward
 
 procedure ParseScope()
@@ -1827,18 +1856,18 @@ begin
   // declaration of variable
   if Sym = 0 begin
     // unknown identifier => must be declaration of variable
-    SymAppend(0 /* don't care */, scLocalVariable)
+    Sym := SymAppend(0 /* don't care */, scLocalVariable)
       // Add a local variable to the symbol table. Must be done before further
       // parsing, otherwise the name of the identifier in TokenBuf is lost.
       // But at this point the address is unknown and will be filled later with
       // SetBuf32()
     Expect(tkColon)
-    ExpectType()
+    Buf[Sym + 8] := ParseType()
     if Accept(tkAssign) <> 0 begin
       ParseExpression()
-      SetBuf32(SymsHead+4, EmitLocalVar(1))
+      SymSetClassAddr(Sym, scLocalVariable, EmitLocalVar(1))
     else
-      SetBuf32(SymsHead+4, EmitLocalVar(0))
+      SymSetClassAddr(Sym, scLocalVariable, EmitLocalVar(0))
     end
     return
   end
@@ -1878,8 +1907,8 @@ begin
     // the following token ':' was parsed.
     TokenBuf := Buf[Sym+14 ..]
     TokenInt := Buf[Sym+13]
-    SymAppend(EmitLocalVar(0), scLocalVariable)
-    ExpectType()
+    Sym := SymAppend(EmitLocalVar(0), scLocalVariable)
+    Buf[Sym + 8] := ParseType()
     return
   end
 
@@ -1889,11 +1918,10 @@ end
 procedure ParseProcedure()
 begin
   Sym : number := SymLookup()
-  if Sym <> 0 begin
-    GetToken()
+  if Sym = 0 begin
+    Sym := SymAppend(0 /* don't care */, scUndefinedProcedure)
   else
-    SymAppend(0 /* don't care */, scUndefinedProcedure)
-    Sym := SymsHead
+    GetToken()
   end
 
   RestoreSymsHead  : number := SymsHead
@@ -1905,9 +1933,9 @@ begin
     if Token <> tkIdentifier begin
       Error(erIdentifierExpected)
     end
-    SymAppend(i, scLocalVariable) // parameters are local variables
+    ParamSym : number := SymAppend(i, scLocalVariable) // parameters are local variables
     Expect(tkColon)
-    ExpectType()
+    Buf[ParamSym + 8] := ParseType()
     if Accept(tkComma) = 0 begin
 
       // Cannot use Expect() directly, because Token may not be changed to exit
@@ -1919,7 +1947,7 @@ begin
   end
 
   if Accept(tkColon) <> 0 begin
-    ExpectType()
+    ReturnType : number := ParseType() // FIXME: store the ReturnType somewhere
   end
 
   if Accept(tkForward) = 0 begin
@@ -1940,22 +1968,20 @@ begin
 
   while Accept(tkBegin) = 0 begin // while NOT begin
     if Token = tkIdentifier begin
-      SymAppend(EmitGlobalVar(), scGlobalVariable)
+      Sym : number := SymAppend(EmitGlobalVar(), scGlobalVariable)
       if Accept(tkColon) <> 0 begin
-        ExpectType()
+        Buf[Sym + 8] := ParseType()
       end
       if Accept(tkEQ) <> 0 begin
         if Token = tkIntegerLiteral begin
-          Buf[SymsHead + 12] := scGlobalConstant
-          SetBuf32(SymsHead + 4, TokenInt)
+          SymSetClassAddr(Sym, scGlobalConstant, TokenInt)
           GetToken()
         else
           if Token = tkStringLiteral begin
             Addr  : number := EmitBinaryFunc(TokenInt, TokenBuf)
             Align : number := TokenInt & 3
             EmitBinaryFunc(4 - Align, ''00000000)
-            Buf[SymsHead + 12] := scGlobalConstant
-            SetBuf32(SymsHead + 4, Addr + BaseAddr)
+            SymSetClassAddr(Sym, scGlobalConstant, Addr + BaseAddr)
             GetToken()
           else
             Error(erConstantExpected)
@@ -1992,6 +2018,7 @@ begin
   LineBuf       := Buf[BufSize ..]
   DigitBuf16    := Buf[BufSize+1024 ..]
 
+  SymInit()
   NextChar()
   GetToken()
   CallMain : number := EmitBegin()

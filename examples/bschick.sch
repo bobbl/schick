@@ -1,4 +1,4 @@
-module Emit
+module BSchick
 
 BaseAddr                = 65536 // 0001'0000hex base address from ELF header
 
