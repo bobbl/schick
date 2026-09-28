@@ -18,6 +18,8 @@ erNumberExpected        = 112 // for constant declaration
 erBinaryStringExpected  = 113
 erCompareOpExpected     = 114
 
+erExpressionStackOverflow       = 180
+
 
 // token from lexer
 tkStringLiteral         = 1
@@ -133,7 +135,42 @@ begin
 end
 
 
+/**********************************************************************
+ * Error handling
+ **********************************************************************/
 
+DigitBuf16      : []byte
+LineNo          : number
+
+procedure PrintNumber(n: number)
+begin
+  if n = 0 begin
+    PosixWrite(2, '0', 1)
+  else
+    x : number
+    x := n
+    i : number
+    i := 16
+    while x <> 0 begin
+      i := i - 1
+      DigitBuf16[i] := (x % 10) + 48 // +'0'
+      x := x / 10
+    end
+    PosixWrite(2, DigitBuf16[i ..], 16 - i)
+  end
+end
+
+msgError = 'Error '
+
+procedure Error(ErrorNo: number)
+begin
+  PosixWrite(2, msgError, 6)
+  PrintNumber(ErrorNo);
+  PosixWrite(2, ' in line ', 9)
+  PrintNumber(LineNo);
+  PosixWrite(2, '.'0D0A, 3)
+  PosixExit(ErrorNo)
+end
 
 
 /**********************************************************************
@@ -201,7 +238,6 @@ itArithOp       = 14
        instructions. */
   NumScope      : number
   NumCalls      : number
-  MaxRegPos     : number
   LocalReg      : []byte
 
 
@@ -279,12 +315,43 @@ begin
     111                             // bits  6..0  = 0x6f (jal)
 end
 
-procedure EmitPush()
+procedure EmitPop()
+// expression stack registers:
+// x10 ... x17  x5 x6 x7  x28 x29 x30 x31
 begin
-  RegPos := RegPos + 1
-  if RegPos > MaxRegPos begin
-    MaxRegPos := RegPos
+  r : number := RegPos
+  if r = 5 begin
+    r := 17
+  else
+    if r = 28 begin
+      r := 7
+    else
+      // no underflow possible
+      r := r - 1
+    end
   end
+  RegPos := r
+end
+
+procedure EmitPush()
+// expression stack registers:
+// x10 ... x17  x5 x6 x7  x28 x29 x30 x31
+begin
+  r : number := RegPos
+  if r = 17 begin
+    r := 5
+  else
+    if r = 7 begin
+      r := 28
+    else
+      if r = 31 begin
+        Error(erExpressionStackOverflow)
+      else
+        r := r + 1
+      end
+    end
+  end
+  RegPos := r
 end
 
 procedure EmitNumber(Imm: number)
@@ -388,7 +455,8 @@ begin
     10 % remu  02007033
 */
   Imm : number := RegPos
-  RegPos := Imm - 1
+  EmitPop()
+
   Shift : number := Operation + Operation + Operation - 3
   Op : number := (((1025264681 >> Shift) & 7) << 12) + 51
         /* octal: 75'0704'6051 */
@@ -465,7 +533,7 @@ begin
 
   else
     EmitIndexPush(SymType, Ofs)
-    RegPos := RegPos - 1
+    EmitPop()
   end
   EmitISDO(Imm, Rs, RegPos, 16387)
     // LBU REG[reg_pos], 0(REG[reg_pos])
@@ -576,12 +644,11 @@ end
 
 procedure EmitPreCall() : number
 begin
-  // save expression stack it it is not empty
+  // save expression stack if it is not empty
   r : number := RegPos
   if r > 10 begin
-    // save currently used expression stack registers
-    while RegPos > 10 begin
-      RegPos := RegPos - 1
+    while RegPos <> 10 begin
+      EmitPop()
       EmitLocalVar(1)
     end
   end
@@ -594,7 +661,7 @@ begin
   EmitPush()
 end
 
-procedure EmitCall(Ofs: number, Pop: number, Save: number)
+procedure EmitCall(Ofs: number, Pop: number, Save: number) : number
 begin
   r : number := CodePos
   Emit32(InsnJAL(1, Ofs - CodePos))
@@ -603,7 +670,7 @@ begin
   if Save > 10 begin
     // restore previously saved expression stack registers
     Emit32((Save << 7) + 327699)
-      // 000500513  MV REG[reg_pos], A0
+      // 000500513  MV REG[RegPos], A0
 
     RegPos := 10
     while RegPos < Save begin
@@ -628,7 +695,6 @@ begin
   CP8 : number := CodePos + 8
   FunctionStartPos := CP0
   RegPos        := 10
-  MaxRegPos     := 10
   NumLocals     := n
   MaxLocals     := n
   NumScope      := 0
@@ -823,48 +889,15 @@ end
  * Scanner
  **********************************************************************/
 
-DigitBuf16      : []byte
+
 Ch              : number
 ChClass         : number
-LineNo          : number
 Token           : number
 TokenInt        : number
 TokenSize       : number
 TokenBuf        : []byte
 SymsHead        : number
 
-
-procedure PrintNumber(n: number)
-begin
-  if n = 0 begin
-    PosixWrite(2, '0', 1)
-  else
-    x : number
-    x := n
-    i : number
-    i := 16
-    while x <> 0 begin
-      i := i - 1
-      DigitBuf16[i] := (x % 10) + 48 // +'0'
-      x := x / 10
-    end
-    PosixWrite(2, DigitBuf16[i ..], 16 - i)
-  end
-end
-
-
-
-msgError = 'Error '
-
-procedure Error(ErrorNo: number)
-begin
-  PosixWrite(2, msgError, 6)
-  PrintNumber(ErrorNo);
-  PosixWrite(2, ' in line ', 9)
-  PrintNumber(LineNo);
-  PosixWrite(2, '.'0D0A, 3)
-  PosixExit(ErrorNo)
-end
 
 procedure TokenCmp(Ident: []byte, Len: number) : number
 begin

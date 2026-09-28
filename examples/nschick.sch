@@ -1,4 +1,4 @@
-module Emit
+module NSchick
 
 BaseAddr                = 65536 // 0001'0000hex base address from ELF header
 
@@ -19,6 +19,8 @@ erBinaryStringExpected  = 113
 erCompareOpExpected     = 114
 erNonHexInString        = 115
 er2ndHexDigitExpected   = 116
+
+erExpressionStackOverflow       = 180
 
 erUnreachable           = 199
 erExpected              = 200
@@ -156,6 +158,7 @@ begin
   end
 end
 
+procedure Error(ErrorNo: number) #forward
 
 
 
@@ -300,15 +303,46 @@ begin
      ((ImmJ>>11) & 1))<< 20) |      // bit  20     = Imm[11]
     ((ImmJ & 1044480)      ) |      // bits 19..12 = Imm[19..12]
     ( Rd              <<  7) |      // bits 11..7  = Rd
-    111;                            // bits  6..0  = 0x6f (jal)
+    111                             // bits  6..0  = 0x6f (jal)
+end
+
+procedure EmitPop()
+// expression stack registers:
+// x10 ... x17  x5 x6 x7  x28 x29 x30 x31
+begin
+  r : number := RegPos
+  if r = 5 begin
+    r := 17
+  else
+    if r = 28 begin
+      r := 7
+    else
+      // no underflow possible
+      r := r - 1
+    end
+  end
+  RegPos := r
 end
 
 procedure EmitPush()
+// expression stack registers:
+// x10 ... x17  x5 x6 x7  x28 x29 x30 x31
 begin
-  RegPos := RegPos + 1
-  if RegPos > MaxRegPos begin
-    MaxRegPos := RegPos
+  r : number := RegPos
+  if r = 17 begin
+    r := 5
+  else
+    if r = 7 begin
+      r := 28
+    else
+      if r = 31 begin
+        Error(erExpressionStackOverflow)
+      else
+        r := r + 1
+      end
+    end
   end
+  RegPos := r
 end
 
 procedure EmitNumber(Imm: number)
@@ -412,7 +446,8 @@ begin
     10 % remu  02007033
 */
   Imm : number := RegPos
-  RegPos := Imm - 1
+  EmitPop()
+
   Shift : number := Operation + Operation + Operation - 3
   Op : number := (((1025264681 >> Shift) & 7) << 12) + 51
         /* octal: 75'0704'6051 */
@@ -435,7 +470,7 @@ begin
       //           0xFF07F  ADDI ?, X0, ?
       // register need not be checked
       // if (((last_insn & 1048575) == (19 + ((reg_pos + 11) << 7))) { */
-      Imm := LastInsn >> 20;
+      Imm := LastInsn >> 20
       if Operation = 3 begin
         Imm := 0 - Imm
             /* 00000013  ADDI reg, reg, -imm
@@ -443,11 +478,11 @@ begin
                cannot happen */
       end
       CodePos := CodePos - 4
-      Op := (((1854505 >> Shift) & 7) << 12) + 19;
+      Op := (((1854505 >> Shift) & 7) << 12) + 19
         // octal: 704'6051
     end
   end
-  EmitIRDO(Imm, RegPos, Op);
+  EmitIRDO(Imm, RegPos, Op)
 end
 
 procedure EmitComp(Condition: number)
@@ -523,7 +558,7 @@ begin
 
   else
     EmitIndexPush(SymClass, Ofs)
-    RegPos := RegPos - 1
+    EmitPop()
   end
   EmitISDO(Imm, Rs, RegPos, 16387)
     // LBU REG[RegPos], 0(REG[RegPos])
@@ -634,12 +669,11 @@ end
 
 procedure EmitPreCall() : number
 begin
-  // save expression stack it it is not empty
+  // save expression stack if it is not empty
   r : number := RegPos
   if r > 10 begin
-    // save currently used expression stack registers
-    while RegPos > 10 begin
-      RegPos := RegPos - 1
+    while RegPos <> 10 begin
+      EmitPop()
       EmitLocalVar(1)
     end
   end
@@ -686,7 +720,6 @@ begin
   CP8 : number := CodePos + 8
   FunctionStartPos := CP0
   RegPos        := 10
-  MaxRegPos     := 10
   NumLocals     := n
   MaxLocals     := n
   NumScope      := 0
@@ -737,7 +770,7 @@ begin
     CP := CP - 4
     CodePos := CP
   end
-  while Next <> 0begin
+  while Next <> 0 begin
     Pos : number := Next
     Next := GetBuf32(Pos)
     SetBuf32(Pos, InsnJAL(0, CP - Pos))
@@ -1291,7 +1324,7 @@ begin
         StoreChar()
       end
 
-      // hexadecimal pairs appended?
+      // hexadecimal pair appended?
       NextChar()
       HiNibble : number := 0
       while HiNibble < 16 begin
@@ -1445,28 +1478,32 @@ Type
  **********************************************************************/
 
 // form of a type
-tfBoolean       = 1
-tfByte          = 3
-tfUInt16        = 4
-tfNumber        = 5
-tfUInt64        = 6
-tfUInt128       = 7
-tfInt8          = 11
-tfInt16         = 12
-tfInt32         = 13
-tfInt64         = 14
-tfInt128        = 15
-tfFloat32       = 21
-tfReal          = 22
-tfFloat128      = 23
+tfProcedure     = 1     // list of param types, list of return types
+tfRecord        = 2     // list of symbols (with type)
+tfVarArray      = 3     // base type
+tfArray         = 4     // base type, length
+tfPointer       = 5     // base type
+tfEnum          = 6     // list of symbols (without type)
+tfBoolean       = 7
 
-tfSubRange      = 24    // low, high
-tfEnum          = 25    // list of symbols (without type)
-tfRecord        = 26    // list of symbols (with type)
-tfPointer       = 27    // base type
-tfVarArray      = 28    // base type
-tfArray         = 29    // base type, length
-tfProcedure     = 30    // list of param types, list of return types
+tfFloat32       = 11
+tfReal          = 12
+tfFloat128      = 13
+
+tfURange        = 16    // min, max
+tfUInt8         = 17
+tfUInt16        = 18
+tfUInt32        = 19
+tfUInt64        = 20
+tfUInt128       = 21
+
+tfSRange        = 24    // min, max
+tfInt8          = 25
+tfInt16         = 26
+tfInt32         = 27
+tfInt64         = 28
+tfInt128        = 29
+
 
 procedure SymLookup() : number
 begin
@@ -1567,8 +1604,8 @@ end
 procedure SymInit()
 begin
   TypeSymAppend('boolean', 7, tfBoolean)
-  TypeSymAppend('byte', 4, tfByte)
-  TypeSymAppend('number', 6, tfNumber)
+  TypeSymAppend('byte',    4, tfUInt8)
+  TypeSymAppend('number',  6, tfUInt32)
 end
 
 
