@@ -1271,15 +1271,6 @@ static void parse_statement(void)
         }
         emit_return();
     }
-    else if (accept(10/*#asm*/)) {
-        while (token != 5/*end*/) {
-            expect('.');
-            expect(14/*"string"*/);
-            emit_binary_func(token_int, token_buf);
-            expect(1/*a string constant*/);
-        }
-        get_token(); /* end */
-    }
     else { /* identifier */
         unsigned int sym = sym_lookup();
         if (sym == 0) {
@@ -1364,7 +1355,17 @@ static void parse_procedure(void)
         expect_type();
     }
 
-    if (accept(11/*#forward*/) == 0) {
+    if (accept(10/*#asm*/)) {
+        sym_fix(sym, code_pos);
+        while (token != 5/*end*/) {
+            expect('.');
+            expect(14/*"string"*/);
+            emit_binary_func(token_int, token_buf);
+            expect(1/*a string constant*/);
+        }
+        get_token(); /* end */
+    }
+    else if (accept(11/*#forward*/) == 0) {
         expect(4/*begin*/);
         sym_fix(sym, emit_func_begin(n));
         parse_scope();

@@ -70,68 +70,63 @@ tyLocalVariable         = 74    // or procedure parameter
  **********************************************************************/
 
 procedure PosixExit(ExitCode: number)
-begin
-  #asm
-    .string ''9308D005  //    li a7, 93         # sys_exit
-    .string ''73000000  //    ecall
-  end
+#asm
+  .string ''9308D005    //    li a7, 93         # sys_exit
+  .string ''73000000    //    ecall
+  .string ''67800000    //    ret
 end
 
 procedure PosixGetChar() : number
-begin
-  #asm
-    .string ''1301C1FF  /*    add sp, sp, -4                    */
-    .string ''13050000  /*    li a0, 0          # stdin         */
-    .string ''93050100  /*    mv a1, sp         # buf on stack  */
-    .string ''13061000  /*    li a2, 1          # 1 byte        */
-    .string ''9308F003  /*    li a7, 63         # sys_read      */
-    .string ''73000000  /*    ecall                             */
-    .string ''93050500  /*    mv a1, a0         # return a0==0 ? -1 : (sp) */
-    .string ''03450100  /*    lw a0, 0(sp)                      */
-    .string ''13014100  /*    add sp, sp, 4                     */
-    .string ''6344B000  /*    bgtz a1, $+4                      */
-    .string ''1305F0FF  /*    li a0, -1                         */
-  end
+#asm
+  .string ''1301C1FF    //    add sp, sp, -4
+  .string ''13050000    //    li a0, 0          # stdin
+  .string ''93050100    //    mv a1, sp         # buf on stack
+  .string ''13061000    //    li a2, 1          # 1 byte
+  .string ''9308F003    //    li a7, 63         # sys_read
+  .string ''73000000    //    ecall
+  .string ''93050500    //    mv a1, a0         # return a0==0 ? -1 : (sp)
+  .string ''03450100    //    lw a0, 0(sp)
+  .string ''13014100    //    add sp, sp, 4
+  .string ''6344B000    //    bgtz a1, $+4
+  .string ''1305F0FF    //    li a0, -1
+  .string ''67800000    //    ret
 end
 
 procedure BrkAlloc(Size: number) : []byte
-begin
-  #asm
-    .string ''130141FF  /*    add sp, sp, -12                   */
-    .string ''2324A100  /*    sw a0, 8(sp)      # size          */
-    .string ''13050000  /*    li a0, 0                          */
-    .string ''9308600D  /*    li a7, 214        # sys_brk       */
-    .string ''73000000  /*    ecall                             */
-    .string ''2320A100  /*    sw a0, 0(sp)      # end           */
-    .string ''83288100  /*    lw a7, 8(sp)      # size          */
-    .string ''33051501  /*    add a0, a0, a7                    */
-    .string ''2322A100  /*    sw a0, 4(sp)      # end + size    */
-    .string ''9308600D  /*    li a7, 214        # sys_brk       */
-    .string ''73000000  /*    ecall                             */
-    .string ''83284100  /*    lw a7, 4(sp)      # end + size    */
+#asm
+  .string ''130141FF    //    add sp, sp, -12
+  .string ''2324A100    //    sw a0, 8(sp)      # size
+  .string ''13050000    //    li a0, 0
+  .string ''9308600D    //    li a7, 214        # sys_brk
+  .string ''73000000    //    ecall
+  .string ''2320A100    //    sw a0, 0(sp)      # end
+  .string ''83288100    //    lw a7, 8(sp)      # size
+  .string ''33051501    //    add a0, a0, a7
+  .string ''2322A100    //    sw a0, 4(sp)      # end + size
+  .string ''9308600D    //    li a7, 214        # sys_brk
+  .string ''73000000    //    ecall
+  .string ''83284100    //    lw a7, 4(sp)      # end + size
 
-    .string ''93050500  //    mv a1, a0
-    .string ''13050000  //    li a0, 0
-    .string ''63941501  //    bne a1, a7, .+8
-    .string ''03250100  //    lw a0, 0(sp)      # old end
-    .string ''1301C100  // 1: add sp, sp, 12
-  end
+  .string ''93050500    //    mv a1, a0
+  .string ''13050000    //    li a0, 0
+  .string ''63941501    //    bne a1, a7, .+8
+  .string ''03250100    //    lw a0, 0(sp)      # old end
+  .string ''1301C100    // 1: add sp, sp, 12
+  .string ''67800000    //    ret
 end
 
 procedure PosixWrite(FileDesc: number, Buf: []byte, Len: number)
-begin
-  #asm
-    .string ''93080004  //    li a7, 64         # sys_write
-    .string ''73000000  //    ecall
-  end
+#asm
+  .string ''93080004    //    li a7, 64         # sys_write
+  .string ''73000000    //    ecall
+  .string ''67800000    //    ret
 end
 
 procedure PosixRead(FileDesc: number, Buf: []byte, Len: number)
-begin
-  #asm
-    .string ''9308F003  //    li a7, 63         # sys_read
-    .string ''73000000  //    ecall
-  end
+#asm
+  .string ''9308F003    //    li a7, 63         # sys_read
+  .string ''73000000    //    ecall
+  .string ''67800000    //    ret
 end
 
 
@@ -1374,20 +1369,6 @@ begin
     return
   end
 
-  if Accept(tkAsm) <> 0 begin
-    while Token <> tkEnd begin
-      Expect(tkDot)
-      Expect(tkString)
-      if Token <> tkStringLiteral begin
-        Error(erBinaryStringExpected)
-      end
-      EmitBinaryFunc(TokenInt, TokenBuf)
-      GetToken() // tkStringLiteral
-    end
-    GetToken() // tkEnd
-    return
-  end
-
   if Token <> tkIdentifier begin
     Error(erStatementExpected)
   end
@@ -1482,11 +1463,25 @@ begin
     ExpectType()
   end
 
-  if Accept(tkForward) = 0 begin
-    Expect(tkBegin)
-    SymFix(Sym, EmitFuncBegin(i))
-    ParseScope()
-    EmitFuncEnd()
+  if Accept(tkAsm) <> 0 begin
+    SymFix(Sym, CodePos)
+    while Token <> tkEnd begin
+      Expect(tkDot)
+      Expect(tkString)
+      if Token <> tkStringLiteral begin
+        Error(erBinaryStringExpected)
+      end
+      EmitBinaryFunc(TokenInt, TokenBuf)
+      GetToken() // tkStringLiteral
+    end
+    GetToken() // tkEnd
+  else
+    if Accept(tkForward) = 0 begin
+      Expect(tkBegin)
+      SymFix(Sym, EmitFuncBegin(i))
+      ParseScope()
+      EmitFuncEnd()
+    end
   end
   SymsHead := RestoreHead // remove local variables from symbol table
 end
